@@ -279,7 +279,6 @@ jobs:
       pull-requests: write
     if: github.event_name == 'workflow_dispatch'
       || (github.event_name == 'pull_request' && github.event.pull_request.merged == true
-      && vars.NPM_PUBLISH_AUTOMATION_ENABLED == 'true'
       && !contains(join(github.event.pull_request.labels.*.name, ', '), 'skip-release')
       && (contains(join(github.event.pull_request.labels.*.name, ', '), 'release-type')
       || vars.DEVELOPMENT_FLOW == 'trunk-based-development' ))
