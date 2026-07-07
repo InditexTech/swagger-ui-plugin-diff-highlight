@@ -1,14 +1,16 @@
 version = 1
-SPDX-PackageName = "base-archetype"
-SPDX-PackageSupplier = "2025 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)"
-SPDX-PackageDownloadLocation = "https://github.com/InditexTech/base-archetype"
+SPDX-PackageName = "swagger-ui-plugin-diff-highlight"
+SPDX-PackageSupplier = "2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)"
+SPDX-PackageDownloadLocation = "https://github.com/InditexTech/swagger-ui-plugin-diff-highlight"
 
 [[annotations]]
 path = [
     "repolinter.json",
     "NOTICE",
     ".gitignore",
+    ".npmrc",
+    ".tool-versions",
     ".github/CODEOWNERS",
 ]
-SPDX-FileCopyrightText = "2025 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)"
+SPDX-FileCopyrightText = "2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)"
 SPDX-License-Identifier = "Apache-2.0"

@@ -1,0 +1,146 @@
+# SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
+# SPDX-License-Identifier: Apache-2.0
+---
+name: code-npm-PR-verify
+
+concurrency:
+  group: code-PR-verify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - ".npmrc"
+      - ".tool-versions"
+      - "CHANGELOG.md"
+      - "src/**"
+      - "types/**"
+      - "example/**"
+      - "*.config.*"
+      - ".prettier*"
+      - ".github/workflows/code*"
+    types: [opened, synchronize, ready_for_review, reopened]
+
+jobs:
+  unit-tests:
+    name: Code / Verify
+    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    env:
+      ASDF_BRANCH_VERSION: 0.18.0
+    steps:
+      - name: Validate admin permissions
+        id: permission-check
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.actor
+            });
+
+            const permission = data.permission;
+            core.info(`User permission level: ${permission}`);
+
+            if (permission !== "admin") {
+              core.setFailed(`User @${context.actor} is not a repository admin.`);
+            }
+
+      - name: Checkout / Branch Head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Detect NPM project
+        id: project
+        run: |
+          if [ -f package.json ]; then
+            echo "has-package=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::package.json is not present yet; skipping NPM verification for the OSS shell PR."
+            echo "has-package=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: NPM / Setup Dependencies Cache
+        if: steps.project.outputs.has-package == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: asdf / Setup Dependencies Cache
+        if: steps.project.outputs.has-package == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: asdf-cache
+        with:
+          path: ~/.asdf
+          key: ${{ runner.os }}-asdf-${{ env.ASDF_BRANCH_VERSION }}-${{ hashFiles('.tool-versions') }}
+
+      - name: Validate tool-versions content
+        if: steps.project.outputs.has-package == 'true'
+        run: |
+          if [ ! -f .tool-versions ]; then
+            echo "::error::.tool-versions is required for NPM workflows"
+            exit 1
+          fi
+          if grep -Evq '^[a-zA-Z0-9_-]+ [a-zA-Z0-9._+-]+$' .tool-versions; then
+            echo "::error::Invalid .tool-versions content detected"
+            exit 1
+          fi
+
+      - name: Save tool-versions content
+        if: steps.project.outputs.has-package == 'true'
+        run: |
+          {
+            echo "TOOL_VERSIONS<<EOF"
+            cat .tool-versions
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: NPM / Setup asdf environment
+        if: steps.project.outputs.has-package == 'true' && steps.asdf-cache.outputs.cache-hit != 'true'
+        uses: asdf-vm/actions/install@1902764435ca0dd2f3388eea723a4f92a4eb8302 # v4.0.0
+        with:
+          tool_versions: ${{ env.TOOL_VERSIONS }}
+          asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
+
+      - name: Restore asdf shims to PATH
+        if: steps.project.outputs.has-package == 'true' && steps.asdf-cache.outputs.cache-hit == 'true'
+        run: |
+          echo "$HOME/.asdf/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.asdf/shims" >> "$GITHUB_PATH"
+          cp .tool-versions "$HOME/.tool-versions"
+
+      - name: NPM / Set npmrc registry
+        if: steps.project.outputs.has-package == 'true'
+        env:
+          NPM_REGISTRY: "https://registry.npmjs.org/"
+        run: |
+          echo "registry=${NPM_REGISTRY}" >> "$HOME/.npmrc"
+          echo "@inditextech:registry=${NPM_REGISTRY}" >> "$HOME/.npmrc"
+
+      - name: NPM / Create Cache Folders
+        if: steps.project.outputs.has-package == 'true'
+        run: mkdir -p "$HOME"/.npm
+
+      - name: NPM / Install dependencies
+        if: steps.project.outputs.has-package == 'true'
+        run: npm ci
+
+      - name: NPM / Verify
+        if: steps.project.outputs.has-package == 'true'
+        run: npm run verify
+
+      - name: Store project information
+        if: steps.project.outputs.has-package == 'true'
+        id: version
+        run: |
+          echo "app-version=$(jq -r ".version" package.json)" >> "$GITHUB_OUTPUT"
+          echo "app-name=$(jq -r ".name" package.json)" >> "$GITHUB_OUTPUT"
+          echo "github-repository=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2)" >> "$GITHUB_OUTPUT"

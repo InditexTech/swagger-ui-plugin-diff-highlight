@@ -1,0 +1,497 @@
+# SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
+# SPDX-License-Identifier: Apache-2.0
+---
+name: code-npm-publish-release-and-snapshot
+run-name: "Publish workflow: ${{ github.event_name }}"
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [closed]
+    branches: ["main", "main-*"]
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - "CHANGELOG.md"
+      - "src/**"
+      - "types/**"
+      - "example/**"
+      - ".github/workflows/code**"
+  workflow_dispatch:
+    inputs:
+      BASELINE:
+        description: "Baseline branch"
+        required: true
+        default: "main"
+      RELEASE_TYPE:
+        description: "Release type to use"
+        required: true
+        default: "release-type/minor"
+        type: choice
+        options:
+          - "release-type/hotfix"
+          - "release-type/multi-hotfix"
+          - "release-type/major"
+          - "release-type/minor"
+          - "release-type/patch"
+
+env:
+  ASDF_BRANCH_VERSION: 0.18.0
+  NPM_REGISTRY: "https://registry.npmjs.org/"
+
+jobs:
+  publish-snapshot:
+    name: Publish Snapshot
+    concurrency: code-publish-snapshot-${{ github.ref }}
+    permissions:
+      id-token: write
+      contents: read
+      issues: write
+      pull-requests: write
+    if: >
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request != null &&
+      github.event.comment.body == '/publish-snapshot'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate admin permissions
+        id: permission-check
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.actor
+            });
+
+            const permission = data.permission;
+            core.info(`User permission level: ${permission}`);
+
+            if (permission !== "admin") {
+              core.setFailed(`User @${context.actor} is not a repository admin.`);
+            }
+
+      - name: Checkout PR branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate NPM project
+        run: |
+          if [ ! -f package.json ]; then
+            echo "::error::package.json is required to publish an NPM snapshot"
+            exit 1
+          fi
+          if [ ! -f package-lock.json ]; then
+            echo "::error::package-lock.json is required to publish an NPM snapshot"
+            exit 1
+          fi
+
+      - name: NPM / Setup Dependencies Cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Restore asdf Cache
+        id: asdf-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        continue-on-error: true
+        with:
+          path: ~/.asdf
+          key: ${{ runner.os }}-asdf-${{ env.ASDF_BRANCH_VERSION }}-${{ hashFiles('.tool-versions') }}
+
+      - name: Save tool-versions content
+        run: |
+          {
+            echo "TOOL_VERSIONS<<EOF"
+            cat .tool-versions
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup asdf environment
+        uses: asdf-vm/actions/install@1902764435ca0dd2f3388eea723a4f92a4eb8302 # v4.0.0
+        if: steps.asdf-cache.outputs.cache-hit != 'true'
+        with:
+          tool_versions: ${{ env.TOOL_VERSIONS }}
+          asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
+
+      - name: Restore asdf shims to PATH
+        if: steps.asdf-cache.outputs.cache-hit == 'true'
+        run: |
+          echo "$HOME/.asdf/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.asdf/shims" >> "$GITHUB_PATH"
+          cp .tool-versions "$HOME/.tool-versions"
+
+      - name: NPM / Set npmrc registry
+        run: |
+          echo "registry=${NPM_REGISTRY}" >> "$HOME/.npmrc"
+          echo "@inditextech:registry=${NPM_REGISTRY}" >> "$HOME/.npmrc"
+
+      - name: NPM / Create Cache Folders
+        run: mkdir -p "$HOME"/.npm
+
+      - name: NPM / Install dependencies
+        run: npm ci
+
+      - name: NPM / Verify
+        run: npm run verify
+
+      - name: Define snapshot version
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version.replace(/-.*/, '')")
+          SNAPSHOT_VERSION="${BASE_VERSION}-SNAPSHOT.${{ github.run_number }}.${{ github.run_attempt }}"
+          echo "SNAPSHOT_VERSION=$SNAPSHOT_VERSION" >> "$GITHUB_ENV"
+
+      - name: NPM / Prepare snapshot
+        env:
+          SNAPSHOT_VERSION: ${{ env.SNAPSHOT_VERSION }}
+        run: |
+          npm version "$SNAPSHOT_VERSION" --no-git-tag-version
+          npm run release:prepare --if-present
+          npm run build --if-present
+
+      - name: NPM / Ensure minimum npm version for trusted publishing
+        run: |
+          CURRENT_NPM=$(npm --version)
+          REQUIRED_NPM="11.5.1"
+          if printf '%s\n%s\n' "$REQUIRED_NPM" "$CURRENT_NPM" | sort -V -C; then
+            echo "npm $CURRENT_NPM already meets the minimum requirement ($REQUIRED_NPM). Skipping upgrade."
+          else
+            echo "npm $CURRENT_NPM is below the minimum requirement ($REQUIRED_NPM). Upgrading..."
+            npm install -g npm@^11.5.1 --registry="${NPM_REGISTRY}"
+            asdf reshim nodejs
+          fi
+          node --version
+          npm --version
+
+      - name: NPM / Verify package exists in registry
+        id: verify-package
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          ENCODED_PKG_NAME=$(node -p "encodeURIComponent(process.argv[1])" "$PKG_NAME")
+          RESPONSE_FILE=$(mktemp)
+          if ! HTTP_STATUS=$(curl -sS -o "$RESPONSE_FILE" -w "%{http_code}" \
+            --connect-timeout 10 \
+            --max-time 30 \
+            --retry 3 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            "${NPM_REGISTRY}${ENCODED_PKG_NAME}"); then
+            echo "::error::Failed to verify $PKG_NAME due to npm registry connectivity error"
+            rm -f "$RESPONSE_FILE"
+            exit 1
+          fi
+          case "$HTTP_STATUS" in
+            200)
+              echo "HAS_NEW_PACKAGE=false" >> "$GITHUB_ENV"
+              ;;
+            404)
+              echo "::warning::$PKG_NAME is not present in the npm registry; NPM_TOKEN will be required"
+              echo "HAS_NEW_PACKAGE=true" >> "$GITHUB_ENV"
+              ;;
+            429|5??)
+              echo "::error::Failed to verify $PKG_NAME due to transient npm registry error (HTTP $HTTP_STATUS)"
+              exit 1
+              ;;
+            *)
+              echo "::error::Failed to verify $PKG_NAME due to unexpected npm registry response (HTTP $HTTP_STATUS)"
+              exit 1
+              ;;
+          esac
+          rm -f "$RESPONSE_FILE"
+
+      - name: NPM / Publish Snapshot (OIDC + provenance)
+        if: env.HAS_NEW_PACKAGE == 'false'
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+        run: npm publish --tag next --access public
+
+      - name: NPM / Publish Snapshot (NPM_TOKEN for new packages)
+        if: env.HAS_NEW_PACKAGE == 'true'
+        env:
+          NPM_AUTH: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NPM_AUTH:-}" ]; then
+            echo "::error::NPM_TOKEN secret is required for publishing new packages but is not set"
+            exit 1
+          fi
+          TEMP_NPMRC="$(mktemp)"
+          trap 'rm -f "$TEMP_NPMRC"' EXIT
+          cp "$HOME/.npmrc" "$TEMP_NPMRC"
+          chmod 600 "$TEMP_NPMRC"
+          echo "//registry.npmjs.org/:_authToken=${NPM_AUTH}" >> "$TEMP_NPMRC"
+          export NPM_CONFIG_USERCONFIG="$TEMP_NPMRC"
+          npm publish --tag next --access public
+
+      - name: Result / Comment on PR
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const status = '${{ job.status }}';
+            const authMethod = '${{ env.HAS_NEW_PACKAGE }}' === 'true'
+              ? 'NPM_TOKEN (new package detected)'
+              : 'OIDC trusted publishing (provenance)';
+
+            const body = status === 'success'
+              ? [
+                  '### :rocket: NPM snapshot published',
+                  '',
+                  `- Version: \`${process.env.SNAPSHOT_VERSION}\``,
+                  '- Tag: `next`',
+                  `- Auth: ${authMethod}`
+                ]
+              : [
+                  '### :x: NPM snapshot publication failed',
+                  '',
+                  'Please check the workflow logs for details.'
+                ];
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body.join('\n')
+            });
+
+  release:
+    name: Release
+    concurrency: code-release-${{ github.ref }}
+    permissions:
+      id-token: write
+      contents: write
+      issues: write
+      pull-requests: write
+    if: github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'pull_request' && github.event.pull_request.merged == true
+      && !contains(join(github.event.pull_request.labels.*.name, ', '), 'skip-release')
+      && (contains(join(github.event.pull_request.labels.*.name, ', '), 'release-type')
+      || vars.DEVELOPMENT_FLOW == 'trunk-based-development' ))
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate admin permissions
+        id: permission-check
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.actor
+            });
+
+            const permission = data.permission;
+            core.info(`User permission level: ${permission}`);
+
+            if (permission !== "admin") {
+              core.setFailed(`User @${context.actor} is not a repository admin.`);
+            }
+
+      - name: Get input parameters
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            RELEASE_LABELS="${{ github.event.inputs.RELEASE_TYPE }}"
+          else
+            RELEASE_LABELS="${{ join(github.event.pull_request.labels.*.name, ', ') }}"
+            if [[ $RELEASE_LABELS != *release-type/* ]]; then
+              RELEASE_LABELS="$RELEASE_LABELS, release-type/minor"
+            fi
+          fi
+          echo "RELEASE_LABELS=$RELEASE_LABELS" >> "$GITHUB_ENV"
+          BASELINE_BRANCH=${{ github.event.inputs.BASELINE || github.ref }}
+          echo "BASELINE_BRANCH=${BASELINE_BRANCH#refs/heads/}" >> "$GITHUB_ENV"
+
+      - name: Checkout merge commit
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ env.BASELINE_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Validate NPM project
+        run: |
+          if [ ! -f package.json ]; then
+            echo "::error::package.json is required to release the NPM package"
+            exit 1
+          fi
+          if [ ! -f package-lock.json ]; then
+            echo "::error::package-lock.json is required to release the NPM package"
+            exit 1
+          fi
+
+      - name: NPM / Setup Dependencies Cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Restore asdf Cache
+        id: asdf-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        continue-on-error: true
+        with:
+          path: ~/.asdf
+          key: ${{ runner.os }}-asdf-${{ env.ASDF_BRANCH_VERSION }}-${{ hashFiles('.tool-versions') }}
+
+      - name: Save tool-versions content
+        run: |
+          {
+            echo "TOOL_VERSIONS<<EOF"
+            cat .tool-versions
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup asdf environment
+        uses: asdf-vm/actions/install@1902764435ca0dd2f3388eea723a4f92a4eb8302 # v4.0.0
+        if: steps.asdf-cache.outputs.cache-hit != 'true'
+        with:
+          tool_versions: ${{ env.TOOL_VERSIONS }}
+          asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
+
+      - name: Restore asdf shims to PATH
+        if: steps.asdf-cache.outputs.cache-hit == 'true'
+        run: |
+          echo "$HOME/.asdf/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.asdf/shims" >> "$GITHUB_PATH"
+          cp .tool-versions "$HOME/.tool-versions"
+
+      - name: NPM / Set npmrc registry
+        run: |
+          echo "registry=${NPM_REGISTRY}" >> "$HOME/.npmrc"
+          echo "@inditextech:registry=${NPM_REGISTRY}" >> "$HOME/.npmrc"
+
+      - name: NPM / Create Cache Folders
+        run: mkdir -p "$HOME"/.npm
+
+      - name: Setup patch release type version
+        if: contains(env.RELEASE_LABELS, 'release-type/hotfix') || contains(env.RELEASE_LABELS, 'release-type/multi-hotfix') || contains(env.RELEASE_LABELS, 'release-type/patch')
+        run: echo "RELEASE_VERSION=patch" >> "$GITHUB_ENV"
+
+      - name: Setup minor release type version
+        if: contains(env.RELEASE_LABELS, 'release-type/minor')
+        run: echo "RELEASE_VERSION=minor" >> "$GITHUB_ENV"
+
+      - name: Setup minor release type version when no label set and TBD
+        if: ${{ !contains(env.RELEASE_LABELS, 'release-type') && vars.DEVELOPMENT_FLOW == 'trunk-based-development' }}
+        run: echo "RELEASE_VERSION=minor" >> "$GITHUB_ENV"
+
+      - name: Setup major release type version
+        if: contains(env.RELEASE_LABELS, 'release-type/major')
+        run: echo "RELEASE_VERSION=major" >> "$GITHUB_ENV"
+
+      - name: NPM / Install dependencies
+        run: npm ci
+
+      - name: NPM / Verify
+        run: npm run verify
+
+      - name: Update CHANGELOG.md
+        id: update-changelog
+        uses: release-flow/keep-a-changelog-action@74931dec7ecdbfc8e38ac9ae7e8dd84c08db2f32 # v3.0.0
+        with:
+          command: bump
+          version: ${{ env.RELEASE_VERSION }}
+          changelog: CHANGELOG.md
+          fail-on-empty-release-notes: false
+          keep-unreleased-section: true
+          tag-prefix: ""
+
+      - name: NPM / Prepare release
+        env:
+          RELEASE_VERSION: ${{ steps.update-changelog.outputs.version }}
+        run: |
+          npm version "$RELEASE_VERSION" --no-git-tag-version
+          npm run release:prepare --if-present
+          npm run build --if-present
+
+      - name: NPM / Ensure minimum npm version for trusted publishing
+        run: |
+          CURRENT_NPM=$(npm --version)
+          REQUIRED_NPM="11.5.1"
+          if printf '%s\n%s\n' "$REQUIRED_NPM" "$CURRENT_NPM" | sort -V -C; then
+            echo "npm $CURRENT_NPM already meets the minimum requirement ($REQUIRED_NPM). Skipping upgrade."
+          else
+            echo "npm $CURRENT_NPM is below the minimum requirement ($REQUIRED_NPM). Upgrading..."
+            npm install -g npm@^11.5.1 --registry="${NPM_REGISTRY}"
+            asdf reshim nodejs
+          fi
+          node --version
+          npm --version
+
+      - name: NPM / Verify package exists in registry
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          ENCODED_PKG_NAME=$(node -p "encodeURIComponent(process.argv[1])" "$PKG_NAME")
+          RESPONSE_FILE=$(mktemp)
+          if ! HTTP_STATUS=$(curl -sS -o "$RESPONSE_FILE" -w "%{http_code}" \
+            --connect-timeout 10 \
+            --max-time 30 \
+            --retry 3 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            "${NPM_REGISTRY}${ENCODED_PKG_NAME}"); then
+            echo "::error::Failed to verify $PKG_NAME due to npm registry connectivity error"
+            rm -f "$RESPONSE_FILE"
+            exit 1
+          fi
+          case "$HTTP_STATUS" in
+            200)
+              echo "HAS_NEW_PACKAGE=false" >> "$GITHUB_ENV"
+              ;;
+            404)
+              echo "::warning::$PKG_NAME is not present in the npm registry; NPM_TOKEN will be required"
+              echo "HAS_NEW_PACKAGE=true" >> "$GITHUB_ENV"
+              ;;
+            429|5??)
+              echo "::error::Failed to verify $PKG_NAME due to transient npm registry error (HTTP $HTTP_STATUS)"
+              exit 1
+              ;;
+            *)
+              echo "::error::Failed to verify $PKG_NAME due to unexpected npm registry response (HTTP $HTTP_STATUS)"
+              exit 1
+              ;;
+          esac
+          rm -f "$RESPONSE_FILE"
+
+      - name: Commit release metadata
+        env:
+          RELEASE_VERSION: ${{ steps.update-changelog.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md package.json package-lock.json
+          git commit -m "chore(release): ${RELEASE_VERSION}" || echo "No release metadata changes to commit"
+          git tag "${RELEASE_VERSION}"
+          git push origin "HEAD:${BASELINE_BRANCH}" --follow-tags
+
+      - name: NPM / Publish Release (OIDC + provenance)
+        if: env.HAS_NEW_PACKAGE == 'false'
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+        run: npm publish --access public
+
+      - name: NPM / Publish Release (NPM_TOKEN for new packages)
+        if: env.HAS_NEW_PACKAGE == 'true'
+        env:
+          NPM_AUTH: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NPM_AUTH:-}" ]; then
+            echo "::error::NPM_TOKEN secret is required for publishing new packages but is not set"
+            exit 1
+          fi
+          TEMP_NPMRC="$(mktemp)"
+          trap 'rm -f "$TEMP_NPMRC"' EXIT
+          cp "$HOME/.npmrc" "$TEMP_NPMRC"
+          chmod 600 "$TEMP_NPMRC"
+          echo "//registry.npmjs.org/:_authToken=${NPM_AUTH}" >> "$TEMP_NPMRC"
+          export NPM_CONFIG_USERCONFIG="$TEMP_NPMRC"
+          npm publish --access public
