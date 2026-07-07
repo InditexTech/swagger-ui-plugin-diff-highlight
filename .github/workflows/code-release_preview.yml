@@ -77,7 +77,7 @@ jobs:
         run: |
           if git diff --quiet HEAD^ HEAD -- CHANGELOG.md; then
             echo "::error title={No CHANGELOG.md changes}::{No CHANGELOG.md changes were found. Update the Unreleased section with the new changes.}"
-            gh pr comment ${{ github.event.number }} --body "### :x: No CHANGELOG.md changes
+            gh pr comment ${{ github.event.number }} --repo "$GITHUB_REPOSITORY" --body "### :x: No CHANGELOG.md changes
 
             No changes were found in CHANGELOG.md. Please update the Unreleased section with the changes that apply to this release."
             exit 1
@@ -123,7 +123,7 @@ jobs:
           Remember to use the **'$MERGE_STRATEGY'** strategy to merge this Pull Request (\`$PR_HEAD_REF\` → \`${{ github.event.pull_request.base.ref }}\`).
           "
 
-          gh pr comment ${{ github.event.number }} --body "$(echo -e "$MESSAGE")"
+          gh pr comment ${{ github.event.number }} --repo "$GITHUB_REPOSITORY" --body "$(echo -e "$MESSAGE")"
 
   release-preview-no-code-changes:
     name: Add PR comment with configuration management information
@@ -135,7 +135,7 @@ jobs:
     steps:
       - name: Add PR comment with release preview
         run: |
-          gh pr comment ${{ github.event.number }} --body "### :exclamation: This Pull Request will not trigger a release
+          gh pr comment ${{ github.event.number }} --repo "$GITHUB_REPOSITORY" --body "### :exclamation: This Pull Request will not trigger a release
 
           No package, source, example, changelog, or code workflow changes were detected."
 
@@ -149,6 +149,6 @@ jobs:
     steps:
       - name: Add PR comment with release preview
         run: |
-          gh pr comment ${{ github.event.number }} --body "### :exclamation: This Pull Request will not trigger a release
+          gh pr comment ${{ github.event.number }} --repo "$GITHUB_REPOSITORY" --body "### :exclamation: This Pull Request will not trigger a release
 
           A Pull Request with no \`release-type/...\` labels will not trigger a release, so you need to label this PR if you want to create a release."
