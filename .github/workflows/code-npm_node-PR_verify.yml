@@ -135,7 +135,15 @@ jobs:
 
       - name: NPM / Verify
         if: steps.project.outputs.has-package == 'true'
-        run: npm run verify
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.verify ? 0 : 1)"; then
+            npm run verify
+          else
+            npm run lint --if-present
+            npm run format:check --if-present
+            npm run test --if-present
+            npm run build --if-present
+          fi
 
       - name: Store project information
         if: steps.project.outputs.has-package == 'true'

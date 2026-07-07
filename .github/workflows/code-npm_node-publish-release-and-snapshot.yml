@@ -141,7 +141,15 @@ jobs:
         run: npm ci
 
       - name: NPM / Verify
-        run: npm run verify
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.verify ? 0 : 1)"; then
+            npm run verify
+          else
+            npm run lint --if-present
+            npm run format:check --if-present
+            npm run test --if-present
+            npm run build --if-present
+          fi
 
       - name: Define snapshot version
         run: |
@@ -271,6 +279,7 @@ jobs:
       pull-requests: write
     if: github.event_name == 'workflow_dispatch'
       || (github.event_name == 'pull_request' && github.event.pull_request.merged == true
+      && vars.NPM_PUBLISH_AUTOMATION_ENABLED == 'true'
       && !contains(join(github.event.pull_request.labels.*.name, ', '), 'skip-release')
       && (contains(join(github.event.pull_request.labels.*.name, ', '), 'release-type')
       || vars.DEVELOPMENT_FLOW == 'trunk-based-development' ))
@@ -392,7 +401,15 @@ jobs:
         run: npm ci
 
       - name: NPM / Verify
-        run: npm run verify
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.verify ? 0 : 1)"; then
+            npm run verify
+          else
+            npm run lint --if-present
+            npm run format:check --if-present
+            npm run test --if-present
+            npm run build --if-present
+          fi
 
       - name: Update CHANGELOG.md
         id: update-changelog
