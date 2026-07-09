@@ -4,14 +4,13 @@ SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
 SPDX-License-Identifier: Apache-2.0
 -->
 
-<!-- Add relevant badges here -->
-![GitHub License](https://img.shields.io/github/license/InditexTech/base-archetype)
+![GitHub License](https://img.shields.io/github/license/InditexTech/swagger-ui-plugin-diff-highlight)
 
-# base-archetype
+# swagger-ui-plugin-diff-highlight
 
-Short description of what this project does and why it exists.
+Swagger UI plugin to highlight OpenAPI differences directly in rendered API documentation.
 
-> One or two sentences that explain its purpose in a clear, accessible way.
+> This repository contains the open source shell for the project. The implementation will be added by the project maintainers.
 
 <!-- Add video/image/demo here -->
 
@@ -25,32 +24,19 @@ Short description of what this project does and why it exists.
 
 ### Installation
 
-Explain how to install or run the project.
-
 ```bash
-# Example for a CLI tool
-npm install -g @inditextech/your-tool
+npm install @inditextech/swagger-ui-plugin-diff-highlight
 ```
 
 ### Usage
 
-Show basic usage or link to examples.
-
-```bash
-your-tool init
-```
+Usage documentation will be added with the project implementation.
 
 ## Contributing
 
 We welcome contributions!
 
 Please read our [CONTRIBUTING.md](./CONTRIBUTING.md) and follow the [Code of Conduct](./CODE_OF_CONDUCT.md).
-
-## Roadmap
-
-See [ROADMAP.md](./ROADMAP.md) for planned features and development goals.
-
-<!-- or -->
 
 ## Acknowledgments
 
