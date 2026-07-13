@@ -5,8 +5,9 @@ name: Push Verification
 permissions: read-all
 on:
   push:
-    # Only the default branch is supported.
-    branches: ["main"]
+    # Run on the long-lived git-flow branches.
+    branches: ["develop", "main"]
+
 
 jobs:
   scorecard-analysis:

@@ -19,20 +19,24 @@ To maintain a collaborative and respectful environment, please consider the foll
 
 1. Open an issue to discuss and gather feedback on the feature or fix you wish to address.
 2. Fork the repository and clone it to your local machine.
-3. Create a new branch to work on your contribution: `git checkout -b your-branch-name`.
+3. Create a new branch from the latest `develop` branch to work on your contribution:
+   `git checkout -b feature/your-branch-name`.
 4. Make the necessary changes in your local branch.
 5. Ensure that your code follows the established project style and formatting guidelines.
 6. Perform testing to ensure your changes do not introduce errors.
 7. Make clear and descriptive commits that explain your changes.
 8. Push your branch to the remote repository: `git push origin your-branch-name`.
-9. Open a pull request describing your changes and linking the corresponding issue.
+9. Open a pull request against `develop` describing your changes and linking the corresponding issue.
 10. Await comments and discussions on your pull request. Make any necessary modifications based on the received feedback.
-11. Once your pull request is approved, your contribution will be merged into the main branch.
+11. Once your pull request is approved, your contribution will be merged into `develop`.
+
+Project maintainers prepare releases by opening `release/*` or `hotfix/*` pull requests against `main`. Release pull
+requests must include a `release-type/...` label unless the release is intentionally skipped.
 
 ## Contribution Guidelines
 
-- All contributors are expected to follow the project's [code of conduct](CODE_of_CONDUCT.md). Please be respectful and
-  considerate towards other contributors.
+- All contributors are expected to follow the project's [code of conduct](CODE_OF_CONDUCT.md). Please be respectful and
+considerate towards other contributors.
 - Before starting work on a new feature or fix, check existing [issues](../../issues) and [pull requests](../../pulls)
   to avoid duplications and unnecessary discussions.
 - If you wish to work on an existing issue, comment on the issue to inform other contributors that you are working on it.
