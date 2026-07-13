@@ -1,0 +1,23 @@
+.github/PULL_REQUEST_TEMPLATE.md
+  s_e4b2d740477965::t_2c7e3f70845fb0 16-17
+CODE_OF_CONDUCT.md
+  s_e4b2d740477965::t_76653e1e1bf917 11
+CONTRIBUTING.md
+  s_e4b2d740477965::t_89f7a08e6cc36c 22-23,29,31-34,38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "c41fad0a6a7b6b0f95cf2736767320e224730d9c",
+  "prompts": {},
+  "sessions": {
+    "s_e4b2d740477965": {
+      "agent_id": {
+        "tool": "github-copilot-cli",
+        "id": "6e26aea4-6cb5-4268-a553-ea96277bd715",
+        "model": "gpt-5.5"
+      },
+      "human_author": "amagan <andreamr@ext.zara.com>"
+    }
+  }
+}
