@@ -8,7 +8,6 @@ on:
     # Run on the long-lived git-flow branches.
     branches: ["develop", "main"]
 
-
 jobs:
   scorecard-analysis:
     # remove once public
@@ -53,7 +52,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
-      - name: 'Run Repolinter'
+      - name: "Run Repolinter"
         uses: newrelic/repolinter-action@3f4448f855c351e9695b24524a4111c7847b84cb # v1.7.0
 
   reuse-compliance:

@@ -8,9 +8,18 @@ path = [
     "repolinter.json",
     "NOTICE",
     ".gitignore",
+    ".prettierignore",
     ".npmrc",
+    ".prettierrc",
     ".tool-versions",
     ".github/CODEOWNERS",
+    "package.json",
+    "package-lock.json",
+    "example/package.json",
+    "example/package-lock.json",
+    "example/src/specs/diffSpec.json",
+    "example/src/specs/latestSpec.json",
 ]
+
 SPDX-FileCopyrightText = "2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)"
 SPDX-License-Identifier = "Apache-2.0"

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Feature Request
 description: Suggest a feature or improvement
-title: '[Feature] '
-labels: ['enhancement']
+title: "[Feature] "
+labels: ["enhancement"]
 assignees: []
 
 body:
