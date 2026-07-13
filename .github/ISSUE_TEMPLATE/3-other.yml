@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Other
 description: Use this for anything that doesn't fit the other templates
-title: '[Other] '
-labels: ['discussion']
+title: "[Other] "
+labels: ["discussion"]
 assignees: []
 
 body:

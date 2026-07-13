@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Bug Report
 description: Report a reproducible bug
-title: '[Bug] '
-labels: ['bug']
+title: "[Bug] "
+labels: ["bug"]
 assignees: []
 
 body:

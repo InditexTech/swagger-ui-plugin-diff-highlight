@@ -104,12 +104,11 @@ Valid `x-diff-status` values: `added`, `deleted`, `updated`, `unchanged` (or sim
 
 ##### Where each key goes
 
-
-| Extension         | Where it lives                                                              | Notes                                             |
-| ----------------- | -------------------------------------------------------------------------- | ------------------------------------------------- |
-| `x-diff-status`   | On an operation, a parameter object, a response object, or a schema property | Required on every element you want to mark         |
-| `x-diff-original` | On a schema property only                                                  | Only with `"updated"`; the **before** sub-schema  |
-| `x-diff-new`      | On a schema property only                                                  | Only with `"updated"`; the **after** sub-schema   |
+| Extension         | Where it lives                                                               | Notes                                            |
+| ----------------- | ---------------------------------------------------------------------------- | ------------------------------------------------ |
+| `x-diff-status`   | On an operation, a parameter object, a response object, or a schema property | Required on every element you want to mark       |
+| `x-diff-original` | On a schema property only                                                    | Only with `"updated"`; the **before** sub-schema |
+| `x-diff-new`      | On a schema property only                                                    | Only with `"updated"`; the **after** sub-schema  |
 
 All three keys are **sibling properties** of the element they annotate. `x-diff-original` / `x-diff-new` are only read for `"updated"` schema properties — for added/deleted elements, `x-diff-status` alone is enough.
 
@@ -119,11 +118,11 @@ You don't have to annotate by hand. Compute the diff between your **old** and **
 
 Whatever tool you use, the change types map onto `x-diff-status` the same way:
 
-| Diff-tool change type          | `x-diff-status` | Extra keys                    |
-| ------------------------------ | --------------- | ----------------------------- |
-| added / new                    | `added`         | –                             |
-| removed / deleted / missing    | `deleted`       | –                             |
-| changed / modified             | `updated`       | `x-diff-original`, `x-diff-new` (schema properties) |
+| Diff-tool change type       | `x-diff-status` | Extra keys                                          |
+| --------------------------- | --------------- | --------------------------------------------------- |
+| added / new                 | `added`         | –                                                   |
+| removed / deleted / missing | `deleted`       | –                                                   |
+| changed / modified          | `updated`       | `x-diff-original`, `x-diff-new` (schema properties) |
 
 The three examples below convert real output from popular tools into the same annotated spec.
 
@@ -174,7 +173,7 @@ Apply the mapping to your **new** spec — `added` operation → `x-diff-status:
 ```jsonc
 {
   "newEndpoints": [
-    { "method": "POST", "pathUrl": "/users", "summary": "Create a user" }
+    { "method": "POST", "pathUrl": "/users", "summary": "Create a user" },
   ],
   "changedOperations": [
     {
@@ -182,11 +181,11 @@ Apply the mapping to your **new** spec — `added` operation → `x-diff-status:
       "pathUrl": "/users/{id}",
       "responseChanged": {
         "changedProperties": {
-          "timeout": { "oldType": "string", "newType": "integer" }
-        }
-      }
-    }
-  ]
+          "timeout": { "oldType": "string", "newType": "integer" },
+        },
+      },
+    },
+  ],
 }
 ```
 
