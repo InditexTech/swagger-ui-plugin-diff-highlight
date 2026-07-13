@@ -1,0 +1,83 @@
+/* SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.) */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* ----------------------------------------------------------------------------
+ * Diff highlighting
+ * ------------------------------------------------------------------------- */
+
+/* Added: green + bold */
+.diff-added,
+.diff-added * {
+  color: #1b7e3c !important;
+  font-weight: 700 !important;
+}
+
+/* Deleted: red + strikethrough */
+.diff-deleted,
+.diff-deleted * {
+  color: #c0392b !important;
+  text-decoration: line-through !important;
+}
+
+/* Updated rows (parameters / operations / responses): amber marker */
+.diff-wrap.diff-updated * {
+  color: #b9770e !important;
+}
+
+/* Updated attribute value: original (red strike) -> new (green bold) */
+.diff-updated-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.diff-updated-old {
+  color: #c0392b;
+  text-decoration: line-through;
+  font-weight: 600;
+}
+
+.diff-updated-new {
+  color: #1b7e3c;
+  font-weight: 700;
+}
+
+.diff-updated-arrow {
+  color: #6b6b6b;
+}
+
+/* Mark the schema property NAME cell, not just its value.
+ * The value cell (2nd <td>) carries the diff class; :has() lets us reach the
+ * sibling name cell (1st <td>) rendered by ObjectModel. The `> td >` scoping
+ * keeps a change from leaking onto ancestor rows of nested objects. */
+.swagger-ui tr.property-row:has(> td > .diff-deleted) > td:first-child,
+.swagger-ui tr.property-row:has(> td > .diff-deleted) > td:first-child * {
+  color: #c0392b !important;
+  text-decoration: line-through !important;
+}
+
+.swagger-ui tr.property-row:has(> td > .diff-added) > td:first-child,
+.swagger-ui tr.property-row:has(> td > .diff-added) > td:first-child * {
+  color: #1b7e3c !important;
+  font-weight: 700 !important;
+}
+
+/* Operation-level changes: tag the whole opblock but only paint the
+ * always-visible summary row, so the mark is shown whether the operation is
+ * collapsed or expanded. */
+.diff-op-deleted .opblock-summary,
+.diff-op-deleted .opblock-summary * {
+  color: #c0392b !important;
+  text-decoration: line-through !important;
+}
+
+.diff-op-added .opblock-summary,
+.diff-op-added .opblock-summary * {
+  color: #1b7e3c !important;
+  font-weight: 700 !important;
+}
+
+.diff-op-updated .opblock-summary,
+.diff-op-updated .opblock-summary * {
+  color: #b9770e !important;
+}
