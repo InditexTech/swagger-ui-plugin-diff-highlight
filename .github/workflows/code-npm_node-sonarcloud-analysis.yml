@@ -37,6 +37,7 @@ jobs:
     if: >-
       ${{
         (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'release')
+        && vars.IS_INDITEXTECH_REPO == 'true'
         && vars.SONARCLOUD_ENABLED == 'true'
       }}
     runs-on: ubuntu-24.04
