@@ -36,7 +36,7 @@ requests must include a `release-type/...` label unless the release is intention
 ## Contribution Guidelines
 
 - All contributors are expected to follow the project's [code of conduct](CODE_OF_CONDUCT.md). Please be respectful and
-considerate towards other contributors.
+  considerate towards other contributors.
 - Before starting work on a new feature or fix, check existing [issues](../../issues) and [pull requests](../../pulls)
   to avoid duplications and unnecessary discussions.
 - If you wish to work on an existing issue, comment on the issue to inform other contributors that you are working on it.
