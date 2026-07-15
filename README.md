@@ -12,7 +12,7 @@ A [`swagger-ui-react`](https://www.npmjs.com/package/swagger-ui-react) / Swagger
 
 It reads custom `x-diff-*` extensions from the loaded OpenAPI document and renders them as visual diff marks.
 
-https://github.com/user-attachments/assets/cca07e1c-fd36-4177-a512-89a7b80b6819
+![Walkthrough demo](https://github.com/user-attachments/assets/3b193a3b-ad4a-4ae9-abed-75419559ab92)
 
 ## Features
 
