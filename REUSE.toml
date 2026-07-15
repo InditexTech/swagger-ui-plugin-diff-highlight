@@ -15,6 +15,7 @@ path = [
     ".github/CODEOWNERS",
     "package.json",
     "package-lock.json",
+    "example/.npmrc",
     "example/package.json",
     "example/package-lock.json",
     "example/src/specs/diffSpec.json",
