@@ -279,3 +279,31 @@ Please read our [CONTRIBUTING.md](./CONTRIBUTING.md) and follow the [Code of Con
 This project is licensed under the [Apache-2.0 License](./LICENSE).
 
 © 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
+
+<details>
+<summary>Third-party dependency licenses</summary>
+
+Some dependencies are distributed under dual/alternative licenses (`OR`). The license elected for use in this project is listed below:
+
+| Dependency | Version | Available Licenses | Elected License |
+|---|---|---|---|
+| `dompurify` | 3.4.12 | Apache-2.0 OR MPL-2.0 | [Apache-2.0](THIRD-PARTY-LICENSES/Apache-2.0.txt) |
+| `type-fest` | 0.20.2 | CC0-1.0 OR MIT | [MIT](THIRD-PARTY-LICENSES/MIT.txt) |
+
+Full third-party license texts are available under the [`THIRD-PARTY-LICENSES/`](THIRD-PARTY-LICENSES/) directory:
+
+- [0BSD](THIRD-PARTY-LICENSES/0BSD.txt)
+- [Apache-2.0](THIRD-PARTY-LICENSES/Apache-2.0.txt)
+- [BSD-2-Clause](THIRD-PARTY-LICENSES/BSD-2-Clause.txt)
+- [BSD-3-Clause](THIRD-PARTY-LICENSES/BSD-3-Clause.txt)
+- [BlueOak-1.0.0](THIRD-PARTY-LICENSES/BlueOak-1.0.0.txt)
+- [CC-BY-4.0](THIRD-PARTY-LICENSES/CC-BY-4.0.txt)
+- [CC0-1.0](THIRD-PARTY-LICENSES/CC0-1.0.txt)
+- [ISC](THIRD-PARTY-LICENSES/ISC.txt)
+- [MIT](THIRD-PARTY-LICENSES/MIT.txt)
+- [MIT-0](THIRD-PARTY-LICENSES/MIT-0.txt)
+- [MPL-2.0](THIRD-PARTY-LICENSES/MPL-2.0.txt)
+- [Python-2.0](THIRD-PARTY-LICENSES/Python-2.0.txt)
+- [Unlicense](THIRD-PARTY-LICENSES/Unlicense.txt)
+
+</details>
