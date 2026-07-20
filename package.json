@@ -1,6 +1,6 @@
 {
   "name": "@inditextech/swagger-ui-plugin-diff-highlight",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Highlight API changes (added/updated/deleted) inline in swagger-ui-react via a custom diff-highlighting plugin.",
   "keywords": [
     "swagger",
