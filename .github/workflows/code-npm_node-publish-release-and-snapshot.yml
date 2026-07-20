@@ -474,7 +474,7 @@ jobs:
           tag-prefix: ""
 
       - name: Format generated CHANGELOG.md
-        run: npx --yes prettier --write CHANGELOG.md
+        run: npx prettier --write CHANGELOG.md
 
       - name: NPM / Prepare release
         env:
