@@ -85,9 +85,7 @@
       "rule": {
         "type": "file-existence",
         "options": {
-          "globsAny": [
-            ".github/workflows/"
-          ]
+          "globsAny": [".github/workflows/"]
         }
       }
     },

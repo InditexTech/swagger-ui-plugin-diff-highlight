@@ -1,0 +1,100 @@
+{
+  "name": "@inditextech/swagger-ui-plugin-diff-highlight",
+  "version": "0.1.0",
+  "description": "Highlight API changes (added/updated/deleted) inline in swagger-ui-react via a custom diff-highlighting plugin.",
+  "keywords": [
+    "swagger",
+    "swagger-ui",
+    "swagger-ui-react",
+    "swagger-ui-plugin",
+    "openapi",
+    "openapi-diff",
+    "oas",
+    "oasdiff",
+    "api",
+    "api-diff",
+    "api-changes",
+    "api-versioning",
+    "api-documentation",
+    "diff",
+    "diff-highlight",
+    "diff-viewer",
+    "change-highlight",
+    "changelog",
+    "rest",
+    "react",
+    "plugin",
+    "highlight"
+  ],
+  "license": "Apache-2.0",
+  "author": "Bruno Pedro <brunolgp@inditex.com>",
+  "homepage": "https://github.com/InditexTech/swagger-ui-plugin-diff-highlight#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/InditexTech/swagger-ui-plugin-diff-highlight.git"
+  },
+  "bugs": {
+    "url": "https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/issues"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./styles.css": "./dist/diff.css"
+  },
+  "sideEffects": [
+    "*.css"
+  ],
+  "files": [
+    "dist",
+    "types"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepublishOnly": "npm run lint && npm run format:check && npm test && npm run build"
+  },
+  "peerDependencies": {
+    "react": ">=17",
+    "react-dom": ">=17",
+    "swagger-ui-react": ">=4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.7.0",
+    "immutable": "^4.3.7",
+    "jsdom": "^29.1.1",
+    "prettier": "^3.9.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "swagger-ui-react": "^5.32.8",
+    "tsup": "^8.3.5",
+    "typescript-eslint": "^8.62.1",
+    "vitest": "^4.1.9"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

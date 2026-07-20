@@ -1,0 +1,280 @@
+/* SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.) */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* Demo-only styles for the example app (toolbar + Changes Report modal).
+ *
+ * The diff highlight classes (.diff-added, .diff-deleted, .diff-updated-*) live
+ * in the published library stylesheet, imported separately in App.jsx. The
+ * toolbar legend below reuses those classes, so both stylesheets are needed. */
+
+/* ----------------------------------------------------------------------------
+ * Toolbar
+ * ------------------------------------------------------------------------- */
+
+.diff-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 12px 20px;
+  background: #1b1b1b;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.diff-toolbar__title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.diff-toolbar__legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+}
+
+.diff-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.diff-toolbar__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+
+.diff-btn {
+  cursor: pointer;
+  border: 1px solid #4a4a4a;
+  background: #2d2d2d;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.diff-btn:hover {
+  background: #3a3a3a;
+}
+
+.diff-btn--toggle[aria-pressed="false"] {
+  background: #1b7e3c;
+  border-color: #1b7e3c;
+}
+
+/* ----------------------------------------------------------------------------
+ * Report modal
+ * ------------------------------------------------------------------------- */
+
+.diff-modal__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.diff-modal {
+  background: #fff;
+  border-radius: 8px;
+  width: min(820px, 100%);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.diff-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  border-bottom: 1px solid #ececec;
+  background: linear-gradient(180deg, #fafafa 0%, #ffffff 100%);
+}
+
+.diff-modal__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1b1b1b;
+}
+
+.diff-modal__subtitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #6b6b6b;
+}
+
+.diff-modal__version {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #444;
+  background: #efefef;
+  border-radius: 4px;
+  padding: 1px 7px;
+}
+
+.diff-modal__version--new {
+  color: #1b7e3c;
+  background: #e7f4ec;
+}
+
+.diff-modal__version-arrow {
+  color: #b0b0b0;
+}
+
+.diff-modal__close {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  font-size: 26px;
+  line-height: 1;
+  color: #999;
+  transition: color 0.15s ease;
+}
+
+.diff-modal__close:hover {
+  color: #1b1b1b;
+}
+
+/* Summary stat bar */
+.diff-modal__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 22px;
+  border-bottom: 1px solid #ececec;
+  background: #fafafa;
+}
+
+.diff-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.diff-stat strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.diff-stat--added {
+  color: #1b7e3c;
+  background: #e7f4ec;
+  border-color: #c7e6d3;
+}
+
+.diff-stat--removed {
+  color: #c0392b;
+  background: #fbeae8;
+  border-color: #f0cbc6;
+}
+
+.diff-stat--changed {
+  color: #b9770e;
+  background: #fdf3e3;
+  border-color: #f3e0bd;
+}
+
+/* Report body */
+.diff-modal__body {
+  margin: 0;
+  padding: 8px 22px 20px;
+  overflow: auto;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #1b1b1b;
+}
+
+.diff-report__group {
+  padding: 14px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.diff-report__group:last-child {
+  border-bottom: none;
+}
+
+.diff-report__group-title {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8a8a8a;
+}
+
+.diff-report__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diff-report__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: #f8f8f8;
+}
+
+.diff-report__label {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1b1b1b;
+}
+
+.diff-report__detail {
+  font-size: 12.5px;
+  color: #6b6b6b;
+}
+
+/* Change badges */
+.diff-badge {
+  flex: 0 0 auto;
+  min-width: 68px;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: #fff;
+}
+
+.diff-badge--added {
+  background: #1b7e3c;
+}
+
+.diff-badge--removed {
+  background: #c0392b;
+}
+
+.diff-badge--changed {
+  background: #b9770e;
+}

@@ -1,0 +1,182 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "User API (Diff View: v1.0.0 \u2192 v1.1.0)",
+    "version": "1.1.0",
+    "description": "Annotated OpenAPI document. Properties, parameters, operations and responses carry `x-diff-*` extensions consumed by the DiffHighlightPlugin."
+  },
+  "servers": [{ "url": "https://api.example.com" }],
+  "paths": {
+    "/users": {
+      "get": {
+        "summary": "List users",
+        "operationId": "listUsers",
+        "tags": ["users"],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of users to return.",
+            "required": false,
+            "schema": { "type": "integer", "default": 20 }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Pagination offset.",
+            "required": false,
+            "schema": { "type": "integer", "default": 0 },
+            "x-diff-status": "added"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Field to sort by.",
+            "required": false,
+            "schema": { "type": "string" },
+            "x-diff-status": "deleted"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A list of users.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/User" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "summary": "Get a user by id",
+        "operationId": "getUser",
+        "tags": ["users"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested user.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/User" }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found.",
+            "x-diff-status": "added",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{id}/tokens": {
+      "post": {
+        "summary": "Issue an access token",
+        "operationId": "createUserToken",
+        "tags": ["users"],
+        "x-diff-status": "added",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Token issued.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Token" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/legacy-login": {
+      "post": {
+        "summary": "Legacy login",
+        "operationId": "legacyLogin",
+        "tags": ["auth"],
+        "x-diff-status": "deleted",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Logged in." }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "x-diff-status": "unchanged"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "x-diff-status": "added"
+          },
+          "old_token": {
+            "type": "string",
+            "x-diff-status": "deleted"
+          },
+          "timeout": {
+            "type": "integer",
+            "x-diff-status": "updated",
+            "x-diff-original": { "type": "string" },
+            "x-diff-new": { "type": "integer" }
+          }
+        }
+      },
+      "Token": {
+        "type": "object",
+        "properties": {
+          "access_token": { "type": "string" },
+          "expires_in": { "type": "integer" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  }
+}

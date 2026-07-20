@@ -8,7 +8,7 @@ on:
 
 jobs:
   unit-tests:
-    if: 'false'
+    if: "false"
     name: Code / Verify
     runs-on: ubuntu-24.04
     steps:
