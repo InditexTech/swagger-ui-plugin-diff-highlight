@@ -285,10 +285,10 @@ This project is licensed under the [Apache-2.0 License](./LICENSE).
 
 Some dependencies are distributed under dual/alternative licenses (`OR`). The license elected for use in this project is listed below:
 
-| Dependency | Version | Available Licenses | Elected License |
-|---|---|---|---|
-| `dompurify` | 3.4.12 | Apache-2.0 OR MPL-2.0 | [Apache-2.0](THIRD-PARTY-LICENSES/Apache-2.0.txt) |
-| `type-fest` | 0.20.2 | CC0-1.0 OR MIT | [MIT](THIRD-PARTY-LICENSES/MIT.txt) |
+| Dependency  | Version | Available Licenses    | Elected License                                   |
+| ----------- | ------- | --------------------- | ------------------------------------------------- |
+| `dompurify` | 3.4.12  | Apache-2.0 OR MPL-2.0 | [Apache-2.0](THIRD-PARTY-LICENSES/Apache-2.0.txt) |
+| `type-fest` | 0.20.2  | CC0-1.0 OR MIT        | [MIT](THIRD-PARTY-LICENSES/MIT.txt)               |
 
 Full third-party license texts are available under the [`THIRD-PARTY-LICENSES/`](THIRD-PARTY-LICENSES/) directory:
 
