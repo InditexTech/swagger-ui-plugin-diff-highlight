@@ -473,6 +473,9 @@ jobs:
           keep-unreleased-section: true
           tag-prefix: ""
 
+      - name: Format generated CHANGELOG.md
+        run: npx --yes prettier --write CHANGELOG.md
+
       - name: NPM / Prepare release
         env:
           RELEASE_VERSION: ${{ steps.update-changelog.outputs.version }}
