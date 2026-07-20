@@ -581,3 +581,14 @@ jobs:
           echo "//registry.npmjs.org/:_authToken=${NPM_AUTH}" >> "$TEMP_NPMRC"
           export NPM_CONFIG_USERCONFIG="$TEMP_NPMRC"
           npm publish --access public
+
+      - name: GitHub Release / Create
+        uses: ncipollo/release-action@2c591bcc8ecdcd2db72b97d6147f871fcd833ba5 # v1.14.0
+        id: github-release
+        continue-on-error: true
+        with:
+          name: ${{ steps.update-changelog.outputs.version }}
+          tag: ${{ steps.update-changelog.outputs.version }}
+          token: ${{ steps.app-token.outputs.token }}
+          body: |
+            Check out the [changelog](CHANGELOG.md) for version ${{ steps.update-changelog.outputs.version }}
