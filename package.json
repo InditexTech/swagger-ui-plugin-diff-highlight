@@ -27,7 +27,7 @@
     "highlight"
   ],
   "license": "Apache-2.0",
-  "author": "Inditex",
+  "author": "Bruno Pedro <brunolgp@inditex.com>",
   "homepage": "https://github.com/InditexTech/swagger-ui-plugin-diff-highlight#readme",
   "repository": {
     "type": "git",
