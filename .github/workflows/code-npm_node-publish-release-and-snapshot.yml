@@ -198,7 +198,23 @@ jobs:
           fi
           case "$HTTP_STATUS" in
             200)
-              echo "HAS_NEW_PACKAGE=false" >> "$GITHUB_ENV"
+              PARSE_STATUS=0
+              node -e "try { const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); process.exit(Object.keys(d.versions||{}).length > 0 ? 0 : 1); } catch(e) { console.error('JSON parse error:', e.message); process.exit(2); }" "$RESPONSE_FILE" || PARSE_STATUS=$?
+              case "$PARSE_STATUS" in
+                0)
+                  echo "✓ $PKG_NAME exists in registry with active versions"
+                  echo "HAS_NEW_PACKAGE=false" >> "$GITHUB_ENV"
+                  ;;
+                1)
+                  echo "::warning::$PKG_NAME has no active versions (unpublished); NPM_TOKEN will be required"
+                  echo "HAS_NEW_PACKAGE=true" >> "$GITHUB_ENV"
+                  ;;
+                *)
+                  echo "::error::Failed to verify $PKG_NAME — npm registry returned invalid JSON (HTTP 200)"
+                  rm -f "$RESPONSE_FILE"
+                  exit 1
+                  ;;
+              esac
               ;;
             404)
               echo "::warning::$PKG_NAME is not present in the npm registry; NPM_TOKEN will be required"
@@ -316,12 +332,18 @@ jobs:
           BASELINE_BRANCH=${{ github.event.inputs.BASELINE || github.ref }}
           echo "BASELINE_BRANCH=${BASELINE_BRANCH#refs/heads/}" >> "$GITHUB_ENV"
 
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Checkout merge commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ env.BASELINE_BRANCH }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Validate NPM project
         run: |
@@ -396,6 +418,36 @@ jobs:
         if: contains(env.RELEASE_LABELS, 'release-type/major')
         run: echo "RELEASE_VERSION=major" >> "$GITHUB_ENV"
 
+      - name: Prepare committer information
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GPG_PRIVATE_KEY: ${{ secrets.CI_GPG_SECRET_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.CI_GPG_SECRET_KEY_PASSWORD }}
+        run: |
+          git config --global credential.helper store
+          cat <<EOT >> ~/.git-credentials
+          https://ci-user:$GITHUB_TOKEN@github.com
+          EOT
+
+          # GPG: non-interactive signing setup
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          printf 'allow-loopback-pinentry\nallow-preset-passphrase\n' > ~/.gnupg/gpg-agent.conf
+          printf 'use-agent\npinentry-mode loopback\n' > ~/.gnupg/gpg.conf
+          gpgconf --kill gpg-agent || true
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          KEY_DATA=$(gpg --list-secret-keys --with-colons)
+          echo "$KEY_DATA" | awk -F: '/^grp:/ {print $10}' | while read -r GRIP; do
+            /usr/lib/gnupg/gpg-preset-passphrase --preset "$GRIP" <<< "$GPG_PASSPHRASE"
+          done
+
+          # Git: identity and signing
+          FPR=$(echo "$KEY_DATA" | awk -F: '/^fpr:/ {print $10; exit}')
+          git config user.name "srvcosoitxtech"
+          git config user.email "oso@inditex.com"
+          git config user.signingkey "$FPR"
+          git config commit.gpgsign true
+          git config tag.gpgsign true
+
       - name: NPM / Install dependencies
         run: npm ci
 
@@ -461,7 +513,23 @@ jobs:
           fi
           case "$HTTP_STATUS" in
             200)
-              echo "HAS_NEW_PACKAGE=false" >> "$GITHUB_ENV"
+              PARSE_STATUS=0
+              node -e "try { const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); process.exit(Object.keys(d.versions||{}).length > 0 ? 0 : 1); } catch(e) { console.error('JSON parse error:', e.message); process.exit(2); }" "$RESPONSE_FILE" || PARSE_STATUS=$?
+              case "$PARSE_STATUS" in
+                0)
+                  echo "✓ $PKG_NAME exists in registry with active versions"
+                  echo "HAS_NEW_PACKAGE=false" >> "$GITHUB_ENV"
+                  ;;
+                1)
+                  echo "::warning::$PKG_NAME has no active versions (unpublished); NPM_TOKEN will be required"
+                  echo "HAS_NEW_PACKAGE=true" >> "$GITHUB_ENV"
+                  ;;
+                *)
+                  echo "::error::Failed to verify $PKG_NAME — npm registry returned invalid JSON (HTTP 200)"
+                  rm -f "$RESPONSE_FILE"
+                  exit 1
+                  ;;
+              esac
               ;;
             404)
               echo "::warning::$PKG_NAME is not present in the npm registry; NPM_TOKEN will be required"
@@ -480,13 +548,12 @@ jobs:
 
       - name: Commit release metadata
         env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           RELEASE_VERSION: ${{ steps.update-changelog.outputs.version }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md package.json package-lock.json
-          git commit -m "chore(release): ${RELEASE_VERSION}" || echo "No release metadata changes to commit"
-          git tag "${RELEASE_VERSION}"
+          git commit -S -m "chore(release): ${RELEASE_VERSION}" || echo "No release metadata changes to commit"
+          git tag -s "${RELEASE_VERSION}" -m "Release ${RELEASE_VERSION}"
           git push origin "HEAD:${BASELINE_BRANCH}" --follow-tags
 
       - name: NPM / Publish Release (OIDC + provenance)
