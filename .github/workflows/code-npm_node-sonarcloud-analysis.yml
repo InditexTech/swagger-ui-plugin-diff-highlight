@@ -120,10 +120,10 @@ jobs:
 
       - name: Set up JDK 21 for SonarScanner
         if: steps.project.outputs.has-package == 'true'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: "21"
 
       - name: SonarCloud / Run analysis with release event
         if: ${{ steps.project.outputs.has-package == 'true' && github.event_name == 'release' }}
