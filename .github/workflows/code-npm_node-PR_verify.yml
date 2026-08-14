@@ -28,27 +28,11 @@ jobs:
     name: Code / Verify
     timeout-minutes: 60
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     env:
       ASDF_BRANCH_VERSION: 0.18.0
     steps:
-      - name: Validate admin permissions
-        id: permission-check
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
-        with:
-          script: |
-            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              username: context.actor
-            });
-
-            const permission = data.permission;
-            core.info(`User permission level: ${permission}`);
-
-            if (permission !== "admin") {
-              core.setFailed(`User @${context.actor} is not a repository admin.`);
-            }
-
       - name: Checkout / Branch Head
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
