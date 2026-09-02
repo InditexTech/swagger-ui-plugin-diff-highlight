@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated transitive `brace-expansion` to `>=1.1.18`/`>=5.0.9`, fixing DoS via unbounded expansion (CVE-2026-14257, CVE-2026-69152)
 - Updated transitive `postcss` to `>=8.5.23`, fixing an incomplete `sourceMappingURL` path-traversal fix (CVE-2026-69153)
 - Updated transitive `undici` to `>=7.29.0`, fixing several request/response handling issues
+- Updated transitive `browserslist` to `>=4.28.7`, fixing an unbounded memory growth DoS and a prototype-write crash via untrusted `browserslist-stats.json` custom stats ([GHSA-c83g-rgw3-j3cx](https://github.com/advisories/GHSA-c83g-rgw3-j3cx), [GHSA-73wf-gq98-2v4g](https://github.com/advisories/GHSA-73wf-gq98-2v4g))
 
 ## [0.1.0] - 2026-07-20
 
