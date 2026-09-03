@@ -1,0 +1,6 @@
+{
+  "project_type": "single",
+  "publish_snapshot": true,
+  "schema_version": 1,
+  "working_directory": "."
+}

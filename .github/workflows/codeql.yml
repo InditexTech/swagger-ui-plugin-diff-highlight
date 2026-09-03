@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
+# SPDX-License-Identifier: Apache-2.0
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main, main-*, develop, develop-*]
+  pull_request:
+    branches: [main, main-*, develop, develop-*]
+  merge_group:
+    types: [checks_requested]
+  schedule:
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Resolves code-scanning availability at runtime so the analysis skips cleanly (green) where no Advanced Security seat is licensed, and starts automatically once a repository becomes public or gains a seat.
+  scanning-availability:
+    name: Resolve code scanning availability
+    if: >-
+      github.event_name == 'schedule' ||
+      (
+        vars.DEVELOPMENT_FLOW == 'trunk-based-development' &&
+        (
+          (github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref_name, 'main-'))) ||
+          (github.event_name == 'pull_request' && (github.event.pull_request.base.ref == 'main' || startsWith(github.event.pull_request.base.ref, 'main-'))) ||
+          (github.event_name == 'merge_group' && (github.event.merge_group.base_ref == 'main' || startsWith(github.event.merge_group.base_ref, 'main-')))
+        )
+      ) ||
+      (
+        vars.DEVELOPMENT_FLOW == 'git-flow' &&
+        (
+          (github.event_name == 'push' && (github.ref_name == 'develop' || startsWith(github.ref_name, 'develop-'))) ||
+          (github.event_name == 'pull_request' && (github.event.pull_request.base.ref == 'develop' || startsWith(github.event.pull_request.base.ref, 'develop-'))) ||
+          (github.event_name == 'merge_group' && (github.event.merge_group.base_ref == 'develop' || startsWith(github.event.merge_group.base_ref, 'develop-')))
+        )
+      )
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read # Reads repository metadata to resolve availability.
+    outputs:
+      enabled: ${{ steps.resolve.outputs.enabled }}
+    steps:
+      - name: Resolve availability
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Manual opt-in (CODE_SCANNING_ENABLED='true') for a seated private/internal repository whose seat status the workflow token cannot read.
+          FORCE_ENABLED: ${{ vars.CODE_SCANNING_ENABLED }}
+        run: |
+          set -euo pipefail
+          # Visibility is always readable; the security-and-analysis block is admin-token-only, so treat a missing value as unknown.
+          visibility="$(gh api "/repos/${GITHUB_REPOSITORY}" --jq '.visibility' 2>/dev/null || echo unknown)"
+          seat="$(gh api "/repos/${GITHUB_REPOSITORY}" \
+            --jq '.security_and_analysis.advanced_security.status // "unknown"' 2>/dev/null || echo unknown)"
+          enabled=false
+          if [ "${visibility}" = "public" ]; then
+            enabled=true # Code scanning is always free and available on public repositories.
+          elif [ "${seat}" = "enabled" ]; then
+            enabled=true # A Code Security seat is attached, so analysis is licensed.
+          elif [ "${FORCE_ENABLED:-}" = "true" ]; then
+            enabled=true # Operator opted this repository in explicitly.
+          fi
+          echo "Code scanning availability: visibility=${visibility} seat=${seat} enabled=${enabled}"
+          echo "enabled=${enabled}" >> "${GITHUB_OUTPUT}"
+
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    needs: scanning-availability
+    if: needs.scanning-availability.outputs.enabled == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read # Lets CodeQL inspect workflow metadata.
+      contents: read
+      packages: read # Lets CodeQL resolve package metadata during analysis.
+      security-events: write # Uploads CodeQL results to Code Scanning.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          # JS/TS is analyzed buildless: CodeQL's extractor reads source directly, so no Node/npm setup or workspace build is required.
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
+        with:
+          build-mode: ${{ matrix.build-mode }}
+          languages: ${{ matrix.language }}
+          # These three `actions` queries are false positives on the governed lanes: CodeQL propagates a caller's issue_comment/workflow_dispatch triggers through `workflow_call` and cannot evaluate the job-level `if:` guards, yet every flagged site is mitigated in-template (40-hex merge-commit SHA validation, whitelisted bump labels, no PR-head code in privileged jobs); scoped to these rule IDs only.
+          config: |
+            query-filters:
+              - exclude:
+                  id: actions/untrusted-checkout/critical
+              - exclude:
+                  id: actions/envvar-injection/critical
+              - exclude:
+                  id: actions/cache-poisoning/poisonable-step
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
+        with:
+          category: /language:${{ matrix.language }}
