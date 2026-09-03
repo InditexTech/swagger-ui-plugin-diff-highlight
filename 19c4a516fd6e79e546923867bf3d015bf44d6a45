@@ -1,0 +1,35 @@
+.github/ISSUE_TEMPLATE/1-bug.yml
+  s_ec673e77b879ed::t_3f46bd955ae668 1
+.github/ISSUE_TEMPLATE/2-feature.yml
+  s_ec673e77b879ed::t_2e3133755c8abb 1
+.github/ISSUE_TEMPLATE/3-other.yml
+  s_ec673e77b879ed::t_6b20ba343a7f69 1
+.github/ISSUE_TEMPLATE/config.yml
+  s_ec673e77b879ed::t_32e6a6451e6e8c 1
+.github/PULL_REQUEST_TEMPLATE.md
+  s_ec673e77b879ed::t_24a914499580bc 2
+.github/workflows/pr-verify.yml
+  s_ec673e77b879ed::t_8bc136cfd74e20 1
+.github/workflows/push-verify.yml
+  s_ec673e77b879ed::t_01cdb83056c2ae 1
+CODE_OF_CONDUCT.md
+  s_ec673e77b879ed::t_ed38afce415d15 2
+SECURITY.md
+  s_ec673e77b879ed::t_75e49f1d994c59 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "19c4a516fd6e79e546923867bf3d015bf44d6a45",
+  "prompts": {},
+  "sessions": {
+    "s_ec673e77b879ed": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "b685412e-8fe0-4f85-87ac-700e8a2d3d11",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "amagan <andreamr@ext.zara.com>"
+    }
+  }
+}

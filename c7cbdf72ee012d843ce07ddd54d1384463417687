@@ -1,0 +1,19 @@
+.github/workflows/code-npm_node-sonarcloud-analysis.yml
+  s_ec673e77b879ed::t_70a61ea7979fb8 123,126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "c7cbdf72ee012d843ce07ddd54d1384463417687",
+  "prompts": {},
+  "sessions": {
+    "s_ec673e77b879ed": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "b685412e-8fe0-4f85-87ac-700e8a2d3d11",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "amagan <andreamr@ext.zara.com>"
+    }
+  }
+}

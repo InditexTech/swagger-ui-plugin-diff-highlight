@@ -1,0 +1,19 @@
+CHANGELOG.md
+  s_5db4161f9c8b8d::t_06559932a22f55 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "b3122079212db6379a6bd488278739628c8686fa",
+  "prompts": {},
+  "sessions": {
+    "s_5db4161f9c8b8d": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "eef8b56f-88e6-4dcf-94cc-0f5cb0eefd45",
+        "model": "unknown"
+      },
+      "human_author": "Bruno Luis Goncalves Pedro <brunolgp@inditex.com>"
+    }
+  }
+}
