@@ -11,5 +11,6 @@ jobs:
     if: "false"
     name: Code / Verify
     runs-on: ubuntu-24.04
+    permissions: {}
     steps:
       - run: echo "No Code / Verify required"

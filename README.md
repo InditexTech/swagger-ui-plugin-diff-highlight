@@ -272,7 +272,8 @@ Please read our [CONTRIBUTING.md](./CONTRIBUTING.md) and follow the [Code of Con
 
 ## Acknowledgments
 
-<!-- Mention any projects used as inspiration, key dependencies... -->
+- Built on top of [Swagger UI](https://github.com/swagger-api/swagger-ui) and [`swagger-ui-react`](https://www.npmjs.com/package/swagger-ui-react), whose [`wrapComponents`](https://swagger-ui.github.io/swagger-ui/usage/customization/plugin-api/) plugin API makes this plugin possible.
+- Interoperable with popular API-diff tools such as [`oasdiff`](https://github.com/oasdiff/oasdiff), [`openapi-diff`](https://github.com/OpenAPITools/openapi-diff), and [`bump diff`](https://github.com/bump-sh/cli).
 
 ## License
 
