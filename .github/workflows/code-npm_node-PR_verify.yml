@@ -39,7 +39,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Reject any .tool-versions line that is not a strict "<plugin> <version>" before asdf reads it (npm is pinned via package.json packageManager, not here).
           if grep -Evq '^[a-zA-Z0-9_-]+ [a-zA-Z0-9._+-]+$' .tool-versions; then
             echo "::error title=Invalid tool-versions::${WORKING_DIRECTORY}/.tool-versions is malformed."
             exit 1
@@ -52,7 +51,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Set up asdf-managed Node
-        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.0
+        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
         with:
           tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
@@ -62,7 +61,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # One install resolves the whole workspace; `verify` runs the governed lifecycle (lint, unit tests, build) across the tree.
           case "$PROJECT_TYPE" in
             single|workspaces) : ;;
             *)
@@ -70,14 +68,12 @@ jobs:
               exit 1
               ;;
           esac
-          # Package manager defaults to npm; an absent PACKAGE_MANAGER var renders the npm path unchanged (byte-identical to the pre-pnpm template).
           case "${PACKAGE_MANAGER:-npm}" in
             npm)
               npm ci
               npm run verify
               ;;
             pnpm)
-              # Corepack activates the exact pnpm pinned in the product's package.json "packageManager" field: no floating pnpm, no product edit.
               corepack enable
               pnpm install --frozen-lockfile
               pnpm run verify

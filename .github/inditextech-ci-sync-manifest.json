@@ -13,7 +13,7 @@
   "creation_year": 2026,
   "integrity": {
     "algorithm": "hmac-sha256",
-    "signature": "31eb5c1fe000ee6bda8bd74d8c1f273db26cdd9169be565b3bb9e03e36e9c137"
+    "signature": "edd8f10e850f84d223abcab60a5a6da6e0b00b541a99a650ce2bf70f0f14725b"
   },
   "managed_by": "InditexTech CI governance",
   "managed_paths": {
@@ -23,26 +23,34 @@
     ".github/ISSUE_TEMPLATE/config.yml": "10e5dee4d49aa9e7792ceb4c986160c61f95da1ba00a64bf06e5f1f636cd17ec",
     ".github/PULL_REQUEST_TEMPLATE.md": "23a0b0ac79a9020ccac9c013582a01f86e2df2ae7f914673583b9a3368313041",
     ".github/inditextech-ci-node.json": "72449d1243d714b1ef9bd615e6dc67d0ec0b25f0c73440a08fa34d1e498864ac",
-    ".github/workflows/code-npm_node-PR_verify.yml": "29f72ba6e742fc56255f13d27ce650d6ccb2e184d9e2d9647e7c677220b90147",
-    ".github/workflows/code-npm_node-publish-release-and-snapshot.yml": "58b983b783aecbe835e7fad36f112ac8422dc0e83962cff32991001ebcc2d9ad",
-    ".github/workflows/code-npm_node-release-core.yml": "d4ec87242c201d99e0a12c42b7f17a0dda5d103759e1bea1620e7ed533232a5c",
-    ".github/workflows/code-npm_node-sonarcloud-analysis.yml": "8aedcf54db51ae185270ea059728c598caf1b14a5e19d4674180a4513821dd03",
-    ".github/workflows/code-release_preview.yml": "6222022149ea98df153afac623e1ecb5031f61607bcfda665058275e28c408f7",
-    ".github/workflows/codeql.yml": "301f1da228963e0586400b54ebdc7605e0a73c6443889cadc0fbde91869a52d6",
+    ".github/workflows/code-npm_node-PR_verify.yml": "89e11bc8aae9ec44ab47222cc570c27dffb8b426e88665598ea7065a9cc95d54",
+    ".github/workflows/code-npm_node-publish-release-and-snapshot.yml": "7ff9f7b0df30fca58db61e871d97654766e695fbebdf1e2d904da407964d35b0",
+    ".github/workflows/code-npm_node-release-core.yml": "1fd7d472a65b1dceefd86e1da878a356d211518951a55829ed1bd56b65bf1d82",
+    ".github/workflows/code-npm_node-sonarcloud-analysis.yml": "70c1c21825cde574d4744b308e198d030dbabddaa0f8ba07980be253ea6d7afa",
+    ".github/workflows/code-release_preview.yml": "4e2e95d60a498eb12d97ba5c8330b1173f04b02c807140beddad06a6e225b166",
+    ".github/workflows/codeql.yml": "633c0f288566fd1408e7ad545c7631e05f861ebf4ebdce3fe9586672ef065d97",
     ".github/workflows/pr-verify.yml": "f52295fbfe81578c0a6459d8b384be569933ac78d32fff370932a8dec6943e46",
-    ".github/workflows/push-verify.yml": "217097070d0fdef329eae1a7187806a4623d692ce467ca8f1f9a7f56dddb29ed",
-    ".github/workflows/sync-to-develop.yml": "9eb4278deb6be51157152068ccd5f1ee91866943ae9225fb9d8512aaacc88708",
+    ".github/workflows/push-verify.yml": "fd700ba0ee23fdee9cd7ecf23ad386247f4b621b73cc1946f9ef0eda4ea07086",
+    ".github/workflows/scorecard-analysis.yml": "5bd6da647f708cced5d33411cc27aac7f7ee2be06ae541defea677d70fe80481",
+    ".github/workflows/sync-to-develop.yml": "5c35cf0b946a939d0324b1530a78e319e979f993bd1f0105e64fc4478395d8d7",
     ".tool-versions": "5e7b05edf5d8df174df5dd99d012e57666ec9923ac8506df7dc7753ba41815fd",
     "CODE_OF_CONDUCT.md": "ce1e7a8f68a7917d48c03f9f7aae5529367f73af0e959276e889d33ea1e8d4ab",
     "CONTRIBUTING.md": "4e1264ca54a45df44b362c7533f0eba912bfa77b6f561121ae9e5e9d6aa00df3",
     "SECURITY.md": "0ee7a3356bc3a1c7649e3b7a6a9012b0608011be2b1ff8d106ad02c8950bab25",
     "repolinter.json": "0efb305c47a63f03c488a34906fc2d5471c84145c2ff553f2aacf3a41b92e1a1"
   },
+  "managed_variables": {
+    "DEVELOPMENT_FLOW": "git-flow",
+    "PROJECT_TYPE": "single",
+    "PUBLISH_SNAPSHOT": "true",
+    "WORKING_DIRECTORY": "."
+  },
   "profile": "node",
   "repository_id": 1291909277,
+  "retained_paths": {},
   "schema_version": 2,
   "source_digests": {
-    "base": "8af88664d64bb62e112d3039ad780df69cc04f0b3fb5090fd12c8e72d8dab553",
-    "node": "f7151115162e66e928b2b690a5239bbb5c371eab2b2d6449cf019a787319969f"
+    "base": "5070fc83e3b1e67ddc4c2463e767ff3d0d364115c6433d2ae0de75afef2e0e63",
+    "node": "474a30f15f60cb8f19946fa26ac1cdfe97ed2f761ca6fdafa9e9cfdf26e44587"
   }
 }

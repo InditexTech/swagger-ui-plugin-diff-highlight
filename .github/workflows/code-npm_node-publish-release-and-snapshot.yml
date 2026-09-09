@@ -4,9 +4,7 @@
 name: code-npm-node-publish-release-and-snapshot
 run-name: Publish npm (release or snapshot) from ${{ github.event_name }}
 
-# Single registrable top-level npm publish entrypoint (Topology B): npm trusted publishing keys on the workflow FILENAME, so the privileged `npm publish` runs INLINE here (never in a called reusable workflow) and both `workflow_ref` and `job_workflow_ref` resolve to this one file; snapshot and release lanes are separate jobs that hand a pre-built tarball to the pinned gh-actions/npm composite ACTION inside a reviewer-gated Environment, and the unprivileged build stage is the only one running candidate code.
 on:
-  # workflow_dispatch drives the RELEASE lane (it carries release_type); the snapshot lane fires on push / issue_comment only, so a manual dispatch never cuts a snapshot.
   workflow_dispatch:
     inputs:
       release_type:
@@ -32,7 +30,6 @@ permissions:
   contents: read
 
 concurrency:
-  # Lane-separated group key so snapshot and release runs never share a group: snapshot (push / issue_comment) is cancel-in-progress, release (pull_request / workflow_dispatch) is not.
   group: >-
     ${{ format('code-npm-node-publish-{0}-{1}', github.repository,
     (github.event_name == 'push' || github.event_name == 'issue_comment')
@@ -48,9 +45,6 @@ env:
   SNAPSHOT_ARTIFACT: npm-snapshot-dist
 
 jobs:
-  # Snapshot lane (jobs: authorize -> build -> publish).
-
-  # Unprivileged pre-gate for /publish-snapshot: a cheap read-only filter, not a substitute for the reviewer-gated npm-snapshot Environment; resolves the PR head so the build stage checks out the reviewed commit.
   authorize:
     name: Authorize snapshot command
     if: >-
@@ -73,10 +67,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Read-only lookup of the PR head SHA; issue_comment carries the number, not the head commit.
-          head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          head="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '[.head.sha, .head.repo.full_name] | @tsv')"
+          head_sha="$(printf '%s' "$head" | cut -f1)"
+          head_repo="$(printf '%s' "$head" | cut -f2)"
           if [[ -z "$head_sha" || "$head_sha" == "null" ]]; then
             echo "::error title=Unresolved head::Could not resolve the pull request head commit." >&2
+            exit 1
+          fi
+          if [[ "$head_repo" != "$GITHUB_REPOSITORY" ]]; then
+            echo "::error title=Fork head rejected::Snapshot publishing only accepts branches of ${GITHUB_REPOSITORY}; refusing head from ${head_repo}." >&2
             exit 1
           fi
           echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
@@ -84,7 +83,6 @@ jobs:
   build:
     name: Build snapshot
     needs: [authorize]
-    # Snapshot builds fire on the trusted release line (push) or an authorized /publish-snapshot comment only; workflow_dispatch is reserved for releases.
     if: >-
       !cancelled() &&
       (
@@ -122,13 +120,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Snapshot publishing is opt-in (descriptor `publish_snapshot`, default off); an absent PUBLISH_SNAPSHOT variable disables the deploy on both the push and comment lanes.
           if [[ "${PUBLISH_SNAPSHOT:-false}" != "true" ]]; then
             echo "::notice title=Snapshot disabled::publish_snapshot opt-in is off; no snapshot is published."
             echo "should_publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # The next-development commit already restores -SNAPSHOT, so skip it; key on the release-bot committer identity `<slug>[bot]@users.noreply.github.com` rather than the commit subject, which the project owns in delegated mode.
           head_committer_email="$(git show -s --format=%ce HEAD)"
           if [[ "$GITHUB_EVENT_NAME" == "push" && "$head_committer_email" == *"[bot]@users.noreply.github.com" ]]; then
             echo "::notice title=Snapshot skipped::Next-dev commit does not need a snapshot."
@@ -144,7 +140,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Reject any .tool-versions line that is not a strict "<plugin> <version>" before asdf reads it (npm is pinned via package.json packageManager, not here).
           if grep -Evq '^[a-zA-Z0-9_-]+ [a-zA-Z0-9._+-]+$' .tool-versions; then
             echo "::error title=Invalid tool-versions::${WORKING_DIRECTORY}/.tool-versions is malformed."
             exit 1
@@ -158,7 +153,7 @@ jobs:
 
       - name: Set up asdf-managed Node
         if: steps.plan.outputs.should_publish == 'true'
-        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.0
+        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
         with:
           tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
@@ -175,22 +170,19 @@ jobs:
           set -euo pipefail
 
           strip_snapshot() { printf '%s' "${1%-SNAPSHOT}"; }
-          compute_snapshot() {  # <base X.Y.Z> -> snapshot version for this run
+          compute_snapshot() {
             if [[ "$GITHUB_EVENT_NAME" == "issue_comment" ]]; then
-              # On-demand PR-head snapshot: encode the PR number so concurrent PRs never collide on the `next` dist-tag.
               printf '%s-PR%s-SNAPSHOT.%s' "$1" "$PR_NUMBER" "$GITHUB_RUN_NUMBER"
             else
-              # Trusted release-line snapshot: run number + attempt keep every re-run monotonic and unique.
               printf '%s-SNAPSHOT.%s.%s' "$1" "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_ATTEMPT"
             fi
           }
-          member_dir() {  # <npm package name> -> flat workspaces member directory
+          member_dir() {
             printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
           }
 
           mkdir -p "$DIST_DIR"
 
-          # Install, build, stamp the run-unique snapshot version per unit (no lifecycle scripts), then pack the pre-built tree; npm packs workspaces in one call while pnpm packs each member from its own dir, and `npm pkg set` stamps versions in both paths without touching any lockfile.
           case "${PACKAGE_MANAGER:-npm}" in
             npm)
               npm ci
@@ -217,7 +209,6 @@ jobs:
               esac
               ;;
             pnpm)
-              # Corepack activates the exact pnpm pinned in the product's package.json "packageManager" field: no floating pnpm, no product edit.
               corepack enable
               pnpm install --frozen-lockfile
               pnpm run build
@@ -259,11 +250,9 @@ jobs:
           if-no-files-found: error
           retention-days: 5
 
-  # Publish stage: no candidate code runs here. The privileged npm publish is INLINE in this top-level file (so OIDC job_workflow_ref == the registered workflow_ref), granting id-token: write only at this reviewer-gated npm-snapshot boundary to ship the pre-built tarball.
   publish:
     name: Publish snapshot
     needs: [build]
-    # Deploy is gated on the descriptor snapshot opt-in (belt-and-suspenders with the Plan step's should_publish): the credential-bearing deploy never runs unless publish_snapshot is enabled.
     if: >-
       !cancelled() &&
       needs.build.outputs.should_publish == 'true' &&
@@ -273,13 +262,11 @@ jobs:
     environment: npm-snapshot
     permissions:
       contents: read
-      id-token: write # The npm trusted-publishing OIDC boundary, inline in the registered top-level file.
+      id-token: write
     env:
-      # Environment-scoped fallback for a package not yet a registered trusted publisher; set at JOB level so the composite's run steps inherit it, and unreachable from the build stage.
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - name: Check out trusted publish ref
-        # Its own trusted ref, never the candidate head; the reviewed bytes ship as the pre-built artifact only.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -291,27 +278,22 @@ jobs:
           path: ${{ runner.temp }}/publish-dist
 
       - name: Publish via npm trusted publishing
-        # The composite publishes each pre-built tarball with --ignore-scripts, sets the dist-tag, enables provenance only when the repository is public, and falls back to NPM_TOKEN for an unregistered package.
-        uses: InditexTech/gh-actions/npm@5159a0213e29a091bf732553681a0de8ac712d17 # gh-actions/npm composite @ main; no release tag yet
+        uses: InditexTech/gh-actions/npm@977030536dbdb52a7fe2fd5979510fd6a225d035 # v1.1.0
         with:
           working-directory: ${{ vars.WORKING_DIRECTORY }}
           project-type: ${{ vars.PROJECT_TYPE }}
           dist-tag: next
           artifact-directory: ${{ runner.temp }}/publish-dist
-        # NPM_TOKEN is provided at job level: a composite's run steps do not inherit a caller step's env.
-
-  # Release lane (jobs: release-core -> publish-npm -> github-release).
 
   release-core:
     name: Prepare and Build Release
-    # Lane routing: the release cut runs only on release triggers, never on a push / comment (those drive the snapshot lane above).
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
     uses: ./.github/workflows/code-npm_node-release-core.yml
     with:
       release_type: ${{ inputs.release_type }}
-    secrets: inherit
+    secrets:
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
-  # Govern-inject publish path: release-core packed the tarballs and THIS top-level file publishes them INLINE (so OIDC job_workflow_ref == the registered workflow_ref) through the pinned gh-actions/npm composite, holding id-token: write only in this reviewer-gated boundary; skipped in delegated mode.
   publish-npm:
     name: Publish ${{ matrix.release.tag }} to npm
     needs: release-core
@@ -321,17 +303,15 @@ jobs:
     environment: npm-registry
     permissions:
       contents: read
-      id-token: write # The npm trusted-publishing OIDC boundary, inline in the registered top-level file.
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
         release: ${{ fromJSON(needs.release-core.outputs.releases) }}
     env:
-      # Environment-scoped fallback for a package not yet a registered trusted publisher; set at JOB level so the composite's run steps inherit it.
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - name: Check out trusted publish ref
-        # Its own trusted ref, never a candidate head; the release bytes ship as the pre-built artifact only.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -343,16 +323,13 @@ jobs:
           path: ${{ runner.temp }}/publish-dist
 
       - name: Publish via npm trusted publishing
-        # The composite publishes each pre-built tarball with --ignore-scripts, sets the dist-tag, enables provenance only when the repository is public, and falls back to NPM_TOKEN for an unregistered package.
-        uses: InditexTech/gh-actions/npm@5159a0213e29a091bf732553681a0de8ac712d17 # gh-actions/npm composite @ main; no release tag yet
+        uses: InditexTech/gh-actions/npm@977030536dbdb52a7fe2fd5979510fd6a225d035 # v1.1.0
         with:
           working-directory: ${{ vars.WORKING_DIRECTORY }}
           project-type: ${{ vars.PROJECT_TYPE }}
           dist-tag: latest
           artifact-directory: ${{ runner.temp }}/publish-dist
-        # NPM_TOKEN is provided at job level: a composite's run steps do not inherit a caller step's env.
 
-  # Delegated publish path: the project's own release:perform runs under the reviewer-gated npm-registry Environment with the ENV-TOKEN (NPM_TOKEN), NEVER id-token, and is trusted-trigger-only so it carries no pwn-request surface; the inline publish-npm job above stays the SOLE id-token boundary, preserving the single-registrable-entrypoint invariant.
   publish-npm-delegated:
     name: Publish delegated release to npm
     needs: release-core
@@ -389,44 +366,145 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Set up asdf-managed Node
-        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.0
+        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
         with:
           tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
 
       - name: Install dependencies
-        # No publish credential in scope here, so dependency install scripts never see NPM_TOKEN; the token is added only to the release:perform step below.
         working-directory: ${{ env.WORKING_DIRECTORY }}
         shell: bash
         run: |
           set -euo pipefail
-          # Package manager defaults to npm; pnpm is provisioned via corepack from the product's packageManager pin.
           case "${PACKAGE_MANAGER:-npm}" in
-            npm)  npm ci ;;
-            pnpm) corepack enable; pnpm install --frozen-lockfile ;;
+            npm)  npm ci --ignore-scripts ;;
+            pnpm) corepack enable; pnpm install --frozen-lockfile --ignore-scripts ;;
             *)    echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."; exit 1 ;;
           esac
 
       - name: Run project release:perform
         working-directory: ${{ env.WORKING_DIRECTORY }}
         env:
-          # Reviewer-gated Environment secret and the sole publish credential in the delegated lane; no id-token is minted here.
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          # The release commit already passed verify and its tags are pushed; the project's release:perform publishes the tagged versions through its own package manager (corepack enabled above) and owns the publish shape.
           case "${PACKAGE_MANAGER:-npm}" in
             npm)  npm run release:perform ;;
             pnpm) pnpm run release:perform ;;
             *)    echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."; exit 1 ;;
           esac
 
+  finalize-delegated-release:
+    name: Finalize delegated release (next dev + sync PR)
+    needs: [release-core, publish-npm-delegated]
+    if: >-
+      vars.RELEASE_LIFECYCLE == 'delegated' &&
+      needs.release-core.result == 'success' &&
+      needs.publish-npm-delegated.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Check out release branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.ref || github.ref_name }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Read governed tool versions
+        id: tool-versions
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Evq '^[a-zA-Z0-9_-]+ [a-zA-Z0-9._+-]+$' .tool-versions; then
+            echo "::error title=Invalid tool-versions::${WORKING_DIRECTORY}/.tool-versions is malformed."
+            exit 1
+          fi
+          {
+            echo "tool_versions<<EOF"
+            cat .tool-versions
+            echo
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up asdf-managed Node
+        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
+        with:
+          tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
+          asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
+
+      - name: Next development iteration and sync PR
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          BASELINE_BRANCH: ${{ github.event.pull_request.base.ref || github.ref_name }}
+          DEVELOPMENT_FLOW: ${{ vars.DEVELOPMENT_FLOW }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASES: ${{ needs.release-core.outputs.releases }}
+          RELEASE_COMMIT: ${{ needs.release-core.outputs.release_commit }}
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+
+          if [[ "$(git rev-parse HEAD)" != "$RELEASE_COMMIT" ]]; then
+            echo "::notice title=Next-dev skipped::Branch already advanced past the release commit."
+          else
+            release_bump="$(jq -r '.[0].release_bump // ""' <<< "$RELEASES")"
+            case "${PACKAGE_MANAGER:-npm}" in
+              npm)  RELEASE_BUMP="$release_bump" npm run version:development ;;
+              pnpm) corepack enable; RELEASE_BUMP="$release_bump" pnpm run version:development ;;
+              *)    echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."; exit 1 ;;
+            esac
+            git -C "$GITHUB_WORKSPACE" add --update -- "$WORKING_DIRECTORY"
+            if ! git diff --cached --quiet; then
+              git commit -m "[node-release] prepare for next development iteration"
+            fi
+            git push origin "HEAD:refs/heads/$BASELINE_BRANCH"
+          fi
+
+          if [[ "$DEVELOPMENT_FLOW" != "git-flow" ]]; then
+            echo "::notice title=Sync skipped::Sync-to-develop applies only to git-flow."
+            exit 0
+          fi
+
+          version="$(jq -r '.[0].version' <<< "$RELEASES")"
+          develop_branch="${BASELINE_BRANCH/main/develop}"
+          if [[ -z "$(git ls-remote --heads origin "$develop_branch")" ]]; then
+            echo "::notice title=Sync skipped::$develop_branch does not exist."
+            exit 0
+          fi
+          sync_branch="automated/sync-release-${version}-to-${develop_branch}"
+          git switch --force-create "$sync_branch" "origin/$BASELINE_BRANCH"
+          git push --force-with-lease --set-upstream origin "$sync_branch"
+
+          if [[ -z "$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$sync_branch" --base "$develop_branch" --state open --json number --jq '.[0].number // empty')" ]]; then
+            gh pr create --repo "$GITHUB_REPOSITORY" \
+              --base "$develop_branch" --head "$sync_branch" \
+              --title "Sync release $version to $develop_branch" \
+              --body "**Automated pull request** syncing the release cut on \`$BASELINE_BRANCH\` back into \`$develop_branch\`."
+          fi
+
   github-release:
     name: Create GitHub Release ${{ matrix.release.tag }}
     needs: [release-core, publish-npm, publish-npm-delegated]
-    # Tolerate whichever publish path was skipped for the active lifecycle.
     if: >-
       !cancelled() &&
       needs.release-core.result == 'success' &&
@@ -450,7 +528,6 @@ jobs:
           permission-contents: write
 
       - name: Download release distributions
-        # Govern-inject only: the engine packed tarballs to attach; in delegated mode release:perform published directly, so the Release carries generated notes only.
         if: vars.RELEASE_LIFECYCLE != 'delegated'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -458,7 +535,6 @@ jobs:
           path: dist
 
       - name: Create or update GitHub Release
-        # release-core already created and pushed the annotated tag; this attaches the packed tarballs in govern-inject and is notes-only in delegated, with --clobber keeping re-runs idempotent.
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           RELEASE_TAG: ${{ matrix.release.tag }}

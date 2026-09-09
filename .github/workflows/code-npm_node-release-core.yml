@@ -18,19 +18,23 @@ on:
       releases:
         description: JSON array of release tags, versions, package lists, and next-dev versions.
         value: ${{ jobs.prepare-release.outputs.releases }}
+    secrets:
+      APP_PRIVATE_KEY:
+        required: true
 
 permissions:
   contents: read
 
 env:
+  CI_GOVERNANCE_RELEASE_STAGING_REF: refs/ci-governance/release/${{ github.run_id }}-${{ github.run_attempt }}
   PROJECT_TYPE: ${{ vars.PROJECT_TYPE }}
   WORKING_DIRECTORY: ${{ vars.WORKING_DIRECTORY }}
   PACKAGE_MANAGER: ${{ vars.PACKAGE_MANAGER }}
   ASDF_BRANCH_VERSION: '0.18.0'
 
 jobs:
-  prepare-release:
-    name: Prepare Release
+  verify-candidate:
+    name: Verify release candidate
     if: >-
       (
         github.event_name == 'workflow_dispatch' &&
@@ -42,6 +46,7 @@ jobs:
       (
         github.event_name == 'pull_request' &&
         github.event.pull_request.merged &&
+        github.event.pull_request.head.ref != 'automated/ci-governance-sync' &&
         !contains(join(github.event.pull_request.labels.*.name, ','), 'skip-release') &&
         (
           (vars.DEVELOPMENT_FLOW == 'trunk-based-development' && (github.event.pull_request.base.ref == 'main' || startsWith(github.event.pull_request.base.ref, 'main-'))) ||
@@ -54,9 +59,120 @@ jobs:
       )
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve release context
+        id: release-context
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            release_ref="$EVENT_SHA"
+          else
+            release_ref="$PR_MERGE_SHA"
+          fi
+          if [[ ! "$release_ref" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error title=Invalid release context::An immutable release commit is required."
+            exit 1
+          fi
+          echo "release_ref=$release_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Check out release candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ steps.release-context.outputs.release_ref }}
+
+      - name: Read governed tool versions
+        id: tool-versions
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Evq '^[a-zA-Z0-9_-]+ [a-zA-Z0-9._+-]+$' .tool-versions; then
+            echo "::error title=Invalid tool-versions::${WORKING_DIRECTORY}/.tool-versions is malformed."
+            exit 1
+          fi
+          {
+            echo "tool_versions<<EOF"
+            cat .tool-versions
+            echo
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up asdf-managed Node
+        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
+        with:
+          tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
+          asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
+
+      - name: Verify release candidate
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$PROJECT_TYPE" in
+            single|workspaces) : ;;
+            *)
+              echo "::error title=Invalid project type::PROJECT_TYPE must be single or workspaces."
+              exit 1
+              ;;
+          esac
+          case "${PACKAGE_MANAGER:-npm}" in
+            npm)
+              npm ci
+              npm run verify
+              ;;
+            pnpm)
+              corepack enable
+              pnpm install --frozen-lockfile
+              pnpm run verify
+              ;;
+            *)
+              echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."
+              exit 1
+              ;;
+          esac
+
+  prepare-release:
+    name: Prepare Release
+    needs: verify-candidate
+    if: >-
+      needs.verify-candidate.result == 'success' &&
+      (
+        (
+          github.event_name == 'workflow_dispatch' &&
+          (
+            (vars.DEVELOPMENT_FLOW == 'trunk-based-development' && (github.ref_name == 'main' || startsWith(github.ref_name, 'main-'))) ||
+            (vars.DEVELOPMENT_FLOW == 'git-flow' && (github.ref_name == 'main' || startsWith(github.ref_name, 'main-')))
+          )
+        ) ||
+        (
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.merged &&
+          github.event.pull_request.head.ref != 'automated/ci-governance-sync' &&
+          !contains(join(github.event.pull_request.labels.*.name, ','), 'skip-release') &&
+          (
+            (vars.DEVELOPMENT_FLOW == 'trunk-based-development' && (github.event.pull_request.base.ref == 'main' || startsWith(github.event.pull_request.base.ref, 'main-'))) ||
+            (vars.DEVELOPMENT_FLOW == 'git-flow' && (github.event.pull_request.base.ref == 'main' || startsWith(github.event.pull_request.base.ref, 'main-')))
+          ) &&
+          (
+            contains(join(github.event.pull_request.labels.*.name, ','), 'release-type') ||
+            vars.DEVELOPMENT_FLOW == 'trunk-based-development'
+          )
+        )
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     outputs:
       release_commit: ${{ steps.release-metadata.outputs.release_commit }}
       releases: ${{ steps.release-metadata.outputs.releases }}
+      expected_ref: ${{ steps.release-plan.outputs.expected_ref }}
+      staging_ref: ${{ steps.release-metadata.outputs.staging_ref }}
     steps:
       - name: Resolve release context
         id: release-context
@@ -90,6 +206,19 @@ jobs:
             echo "release_labels=$release_labels"
             echo "release_ref=$release_ref"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Enforce protected release branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASELINE_BRANCH: ${{ steps.release-context.outputs.baseline_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          protected="$(gh api "repos/${GITHUB_REPOSITORY}/branches/${BASELINE_BRANCH}" --jq '.protected')"
+          if [[ "$protected" != "true" ]]; then
+            echo "::error title=Unprotected release branch::Releases require a protected baseline branch; '${BASELINE_BRANCH}' is not protected." >&2
+            exit 1
+          fi
 
       - name: Create GitHub App token
         id: app-token
@@ -126,37 +255,21 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Set up asdf-managed Node
-        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.0
+        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
         with:
           tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
 
-      - name: Verify release candidate
+      - name: Install dependencies for delegated release
+        if: vars.RELEASE_LIFECYCLE == 'delegated'
         working-directory: ${{ env.WORKING_DIRECTORY }}
         shell: bash
         run: |
           set -euo pipefail
-          case "$PROJECT_TYPE" in
-            single|workspaces) : ;;
-            *)
-              echo "::error title=Invalid project type::PROJECT_TYPE must be single or workspaces."
-              exit 1
-              ;;
-          esac
           case "${PACKAGE_MANAGER:-npm}" in
-            npm)
-              npm ci
-              npm run verify
-              ;;
-            pnpm)
-              corepack enable
-              pnpm install --frozen-lockfile
-              pnpm run verify
-              ;;
-            *)
-              echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."
-              exit 1
-              ;;
+            npm)  npm ci --ignore-scripts ;;
+            pnpm) corepack enable; pnpm install --frozen-lockfile --ignore-scripts ;;
+            *)    echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."; exit 1 ;;
           esac
 
       - name: Plan release metadata
@@ -231,7 +344,7 @@ jobs:
               jq -r '.version' package.json
             fi
           }
-          bump_semver() {  # <X.Y.Z> <major|minor|patch>
+          bump_semver() {
             local major minor patch
             IFS=. read -r major minor patch <<< "$1"
             case "$2" in
@@ -334,7 +447,6 @@ jobs:
               set_version "$(jq -r '.[0].version' <<< "$releases")" ""
             fi
 
-            # Reconcile workspace cross-dependency specs to each bumped sibling's released version and regenerate the lockfile so published metadata resolves the bumped siblings, not the pre-release -SNAPSHOT specs (needs bash>=4 declare -A; ubuntu runner).
             if [[ "$PROJECT_TYPE" == "workspaces" ]]; then
               declare -A member_version=()
               while IFS= read -r record; do
@@ -438,7 +550,7 @@ jobs:
             rm -f "$tmp"
           fi
 
-      - name: Commit, tag and push release
+      - name: Commit and stage release
         if: vars.RELEASE_LIFECYCLE != 'delegated' && steps.release-plan.outputs.resume != 'true'
         id: release-commit
         env:
@@ -460,16 +572,11 @@ jobs:
           git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
           git commit -m "[node-release] Prepare release"
 
-          tag_refs=()
           while IFS= read -r record; do
-            tag="$(jq -r '.tag' <<< "$record")"
-            version="$(jq -r '.version' <<< "$record")"
-            git check-ref-format --allow-onelevel "refs/tags/$tag"
-            git tag -a "$tag" -m "Release $version"
-            tag_refs+=("refs/tags/$tag")
+            git check-ref-format --allow-onelevel "refs/tags/$(jq -r '.tag' <<< "$record")"
           done < <(jq -c '.[]' <<< "$RELEASES")
 
-          git push --atomic origin "HEAD:$EXPECTED_REF" "${tag_refs[@]}"
+          git push --atomic --force origin "HEAD:$CI_GOVERNANCE_RELEASE_STAGING_REF"
 
       - name: Cut delegated release
         id: delegated-plan
@@ -595,6 +702,18 @@ jobs:
             rm -f "$tmp"
           fi
 
+      # Lifecycle trade-off, stated on purpose. The delegated lane publishes the
+      # baseline branch and the cut tags HERE, before anything has been built or
+      # published, because the project owns its release shape: `release:perform`
+      # runs later, in the caller, and is handed a commit whose tags are already
+      # on the remote. The engine therefore CANNOT make a delegated node release
+      # atomic -- a failed `release:perform` leaves the version consumed, and the
+      # only recovery is to cut the next one. The govern-inject lane stages first
+      # and promotes after the build precisely so it does not have this property.
+      # Restoring atomicity here would mean deferring this push until after
+      # `publish-npm-delegated`, which lives in the workflow that CALLS this
+      # reusable one; a job here cannot depend on a job there. See
+      # `engine/docs/agent-rules/node-adapter.md`.
       - name: Push delegated release
         id: delegated-push
         if: vars.RELEASE_LIFECYCLE == 'delegated'
@@ -637,12 +756,18 @@ jobs:
         id: release-metadata
         env:
           RELEASES: ${{ steps.release-plan.outputs.releases_intermediate || steps.delegated-plan.outputs.releases_intermediate }}
+          RELEASE_LIFECYCLE: ${{ vars.RELEASE_LIFECYCLE }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         shell: bash
         run: |
           set -euo pipefail
+          staging_ref="$CI_GOVERNANCE_RELEASE_STAGING_REF"
+          if [[ "$RELEASE_LIFECYCLE" == "delegated" ]]; then
+            staging_ref=""
+          fi
           {
             echo "release_commit=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+            echo "staging_ref=$staging_ref"
             echo "releases<<EOF"
             printf '%s\n' "$RELEASES"
             echo "EOF"
@@ -683,7 +808,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Set up asdf-managed Node
-        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.0
+        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
         with:
           tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
@@ -760,6 +885,7 @@ jobs:
     needs: [prepare-release, build-distributions]
     if: >-
       !cancelled() &&
+      vars.RELEASE_LIFECYCLE != 'delegated' &&
       needs.prepare-release.result == 'success' &&
       (needs.build-distributions.result == 'success' || needs.build-distributions.result == 'skipped')
     runs-on: ubuntu-24.04
@@ -802,12 +928,59 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Set up asdf-managed Node
-        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.0
+        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
         with:
           tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
 
+      - name: Promote the release to the default branch
+        id: promote
+        if: vars.RELEASE_LIFECYCLE != 'delegated' && (needs.build-distributions.result == 'success' || needs.build-distributions.result == 'skipped')
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          EXPECTED_REF: ${{ needs.prepare-release.outputs.expected_ref }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASES: ${{ needs.prepare-release.outputs.releases }}
+          RELEASE_COMMIT: ${{ needs.prepare-release.outputs.release_commit }}
+          STAGING_REF: ${{ needs.prepare-release.outputs.staging_ref }}
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
+
+          git fetch --no-tags origin "+${STAGING_REF}:refs/ci-governance/staged" 2>/dev/null || true
+          if [[ "$(git ls-remote origin "$EXPECTED_REF" | cut -f1)" == "$RELEASE_COMMIT" ]]; then
+            echo "::notice title=Promotion skipped::$EXPECTED_REF already points at the release commit."
+            git checkout --force --detach "$RELEASE_COMMIT"
+            exit 0
+          fi
+
+          if [[ "$(git rev-parse --verify --quiet refs/ci-governance/staged || true)" != "$RELEASE_COMMIT" ]]; then
+            echo "::error title=Release staging mismatch::$STAGING_REF does not point at the release commit."
+            exit 1
+          fi
+          git checkout --force --detach "$RELEASE_COMMIT"
+
+          tag_refs=()
+          while IFS= read -r record; do
+            tag="$(jq -r '.tag' <<< "$record")"
+            version="$(jq -r '.version' <<< "$record")"
+            git check-ref-format --allow-onelevel "refs/tags/$tag"
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+              echo "::error title=Tag conflict::$tag already exists."
+              exit 1
+            fi
+            git tag -a "$tag" -m "Release $version"
+            tag_refs+=("refs/tags/$tag")
+          done < <(jq -c '.[]' <<< "$RELEASES")
+
+          git push --atomic origin "${RELEASE_COMMIT}:${EXPECTED_REF}" "${tag_refs[@]}"
+
       - name: Next development iteration and sync PR
+        if: steps.promote.outcome == 'success'
         env:
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
           BASELINE_BRANCH: ${{ github.event.pull_request.base.ref || github.ref_name }}
@@ -815,7 +988,6 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           RELEASES: ${{ needs.prepare-release.outputs.releases }}
           RELEASE_COMMIT: ${{ needs.prepare-release.outputs.release_commit }}
-          RELEASE_LIFECYCLE: ${{ vars.RELEASE_LIFECYCLE }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         shell: bash
         run: |
@@ -833,18 +1005,7 @@ jobs:
           if [[ "$(git rev-parse HEAD)" != "$RELEASE_COMMIT" ]]; then
             echo "::notice title=Next-dev skipped::Branch already advanced past the release commit."
           else
-            if [[ "$RELEASE_LIFECYCLE" == "delegated" ]]; then
-              release_bump="$(jq -r '.[0].release_bump // ""' <<< "$RELEASES")"
-              case "${PACKAGE_MANAGER:-npm}" in
-                npm)  RELEASE_BUMP="$release_bump" npm run version:development ;;
-                pnpm) corepack enable; RELEASE_BUMP="$release_bump" pnpm run version:development ;;
-                *)    echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."; exit 1 ;;
-              esac
-              git -C "$GITHUB_WORKSPACE" add --update -- "$WORKING_DIRECTORY"
-              if ! git diff --cached --quiet; then
-                git commit -m "[node-release] prepare for next development iteration"
-              fi
-            else
+            {
               if [[ "$PROJECT_TYPE" == "single" ]]; then
                 next_dev="$(jq -r '.[0].next_dev' <<< "$RELEASES")"
                 npm pkg set "version=$next_dev"
@@ -862,7 +1023,6 @@ jobs:
                 done < <(jq -c '.[]' <<< "$RELEASES")
               fi
 
-              # Same cross-dependency reconciliation as the release strip, on the next-dev bump: point each sibling spec at the bumped member's next_dev and regenerate the lockfile, or main keeps cross-deps at the released version with a stale lockfile and `npm ci` fails (needs bash>=4).
               if [[ "$PROJECT_TYPE" == "workspaces" ]]; then
                 declare -A member_version=()
                 while IFS= read -r record; do
@@ -894,7 +1054,7 @@ jobs:
 
               git -C "$GITHUB_WORKSPACE" add --update -- "$WORKING_DIRECTORY"
               git commit -m "[node-release] prepare for next development iteration"
-            fi
+            }
             git push origin "HEAD:refs/heads/$BASELINE_BRANCH"
           fi
 
@@ -919,3 +1079,19 @@ jobs:
               --title "Sync release $version to $develop_branch" \
               --body "**Automated pull request** syncing the release cut on \`$BASELINE_BRANCH\` back into \`$develop_branch\`."
           fi
+
+      - name: Discard the release staging ref
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          STAGING_REF: ${{ needs.prepare-release.outputs.staging_ref }}
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${STAGING_REF:-}" ]]; then
+            echo "::notice title=Nothing staged::No staging ref was written, so there is nothing to discard."
+            exit 0
+          fi
+          gh auth setup-git
+          git push origin ":${STAGING_REF}"
