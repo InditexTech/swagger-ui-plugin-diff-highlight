@@ -2,3 +2,10 @@ dist
 node_modules
 example
 package-lock.json
+.github
+.sync-exclude
+CHANGELOG.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+SECURITY.md
+repolinter.json

@@ -1,594 +1,488 @@
 # SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
 # SPDX-License-Identifier: Apache-2.0
----
-name: code-npm-publish-release-and-snapshot
-run-name: "Publish workflow: ${{ github.event_name }}"
 
+name: code-npm-node-publish-release-and-snapshot
+run-name: Publish npm (release or snapshot) from ${{ github.event_name }}
+
+# Single registrable top-level npm publish entrypoint (Topology B): npm trusted publishing keys on the workflow FILENAME, so the privileged `npm publish` runs INLINE here (never in a called reusable workflow) and both `workflow_ref` and `job_workflow_ref` resolve to this one file; snapshot and release lanes are separate jobs that hand a pre-built tarball to the pinned gh-actions/npm composite ACTION inside a reviewer-gated Environment, and the unprivileged build stage is the only one running candidate code.
 on:
-  issue_comment:
-    types: [created]
-  pull_request:
-    types: [closed]
-    branches: ["main", "main-*"]
-    paths:
-      - "package.json"
-      - "package-lock.json"
-      - "CHANGELOG.md"
-      - "src/**"
-      - "types/**"
-      - "example/**"
-      - ".github/workflows/code**"
+  # workflow_dispatch drives the RELEASE lane (it carries release_type); the snapshot lane fires on push / issue_comment only, so a manual dispatch never cuts a snapshot.
   workflow_dispatch:
     inputs:
-      BASELINE:
-        description: "Baseline branch"
+      release_type:
+        description: Release type to use
         required: true
-        default: "main"
-      RELEASE_TYPE:
-        description: "Release type to use"
-        required: true
-        default: "release-type/minor"
+        default: release-type/minor
         type: choice
         options:
-          - "release-type/hotfix"
-          - "release-type/multi-hotfix"
-          - "release-type/major"
-          - "release-type/minor"
-          - "release-type/patch"
+          - release-type/hotfix
+          - release-type/multi-hotfix
+          - release-type/major
+          - release-type/minor
+          - release-type/patch
+  pull_request:
+    types: [closed]
+    branches: [main, main-*]
+  push:
+    branches: [main, main-*, develop, develop-*]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Lane-separated group key so snapshot and release runs never share a group: snapshot (push / issue_comment) is cancel-in-progress, release (pull_request / workflow_dispatch) is not.
+  group: >-
+    ${{ format('code-npm-node-publish-{0}-{1}', github.repository,
+    (github.event_name == 'push' || github.event_name == 'issue_comment')
+    && format('snapshot-{0}', github.event.issue.number || github.ref)
+    || format('release-{0}', github.event.pull_request.base.ref || github.ref_name)) }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'issue_comment' }}
 
 env:
-  ASDF_BRANCH_VERSION: 0.18.0
-  NPM_REGISTRY: "https://registry.npmjs.org/"
+  PROJECT_TYPE: ${{ vars.PROJECT_TYPE }}
+  WORKING_DIRECTORY: ${{ vars.WORKING_DIRECTORY }}
+  PACKAGE_MANAGER: ${{ vars.PACKAGE_MANAGER }}
+  ASDF_BRANCH_VERSION: '0.18.0'
+  SNAPSHOT_ARTIFACT: npm-snapshot-dist
 
 jobs:
-  publish-snapshot:
-    name: Publish Snapshot
-    concurrency: code-publish-snapshot-${{ github.ref }}
-    permissions:
-      id-token: write
-      contents: read
-      issues: write
-      pull-requests: write
-    if: >
+  # Snapshot lane (jobs: authorize -> build -> publish).
+
+  # Unprivileged pre-gate for /publish-snapshot: a cheap read-only filter, not a substitute for the reviewer-gated npm-snapshot Environment; resolves the PR head so the build stage checks out the reviewed commit.
+  authorize:
+    name: Authorize snapshot command
+    if: >-
       github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request != null &&
-      github.event.comment.body == '/publish-snapshot'
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/publish-snapshot') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
     steps:
-      - name: Validate admin permissions
-        id: permission-check
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+      - name: Resolve pull request head
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Read-only lookup of the PR head SHA; issue_comment carries the number, not the head commit.
+          head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          if [[ -z "$head_sha" || "$head_sha" == "null" ]]; then
+            echo "::error title=Unresolved head::Could not resolve the pull request head commit." >&2
+            exit 1
+          fi
+          echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build snapshot
+    needs: [authorize]
+    # Snapshot builds fire on the trusted release line (push) or an authorized /publish-snapshot comment only; workflow_dispatch is reserved for releases.
+    if: >-
+      !cancelled() &&
+      (
+        (
+          github.event_name == 'push' &&
+          (
+            (vars.DEVELOPMENT_FLOW == 'trunk-based-development' && (github.ref_name == 'main' || startsWith(github.ref_name, 'main-'))) ||
+            (vars.DEVELOPMENT_FLOW == 'git-flow' && (github.ref_name == 'develop' || startsWith(github.ref_name, 'develop-')))
+          )
+        ) ||
+        (github.event_name == 'issue_comment' && needs.authorize.result == 'success')
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      artifact_name: ${{ steps.pack.outputs.artifact_name }}
+      should_publish: ${{ steps.plan.outputs.should_publish }}
+    steps:
+      - name: Check out snapshot candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          script: |
-            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              username: context.actor
-            });
-
-            const permission = data.permission;
-            core.info(`User permission level: ${permission}`);
-
-            if (permission !== "admin") {
-              core.setFailed(`User @${context.actor} is not a repository admin.`);
-            }
-
-      - name: Checkout PR branch
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          ref: refs/pull/${{ github.event.issue.number }}/head
-          fetch-depth: 0
           persist-credentials: false
+          ref: >-
+            ${{
+              (github.event_name == 'issue_comment' && needs.authorize.outputs.head_sha) ||
+              github.sha
+            }}
 
-      - name: Validate NPM project
+      - name: Plan snapshot
+        id: plan
+        env:
+          PUBLISH_SNAPSHOT: ${{ vars.PUBLISH_SNAPSHOT }}
+        shell: bash
         run: |
-          if [ ! -f package.json ]; then
-            echo "::error::package.json is required to publish an NPM snapshot"
+          set -euo pipefail
+          # Snapshot publishing is opt-in (descriptor `publish_snapshot`, default off); an absent PUBLISH_SNAPSHOT variable disables the deploy on both the push and comment lanes.
+          if [[ "${PUBLISH_SNAPSHOT:-false}" != "true" ]]; then
+            echo "::notice title=Snapshot disabled::publish_snapshot opt-in is off; no snapshot is published."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The next-development commit already restores -SNAPSHOT, so skip it; key on the release-bot committer identity `<slug>[bot]@users.noreply.github.com` rather than the commit subject, which the project owns in delegated mode.
+          head_committer_email="$(git show -s --format=%ce HEAD)"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$head_committer_email" == *"[bot]@users.noreply.github.com" ]]; then
+            echo "::notice title=Snapshot skipped::Next-dev commit does not need a snapshot."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+
+      - name: Read governed tool versions
+        id: tool-versions
+        if: steps.plan.outputs.should_publish == 'true'
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Reject any .tool-versions line that is not a strict "<plugin> <version>" before asdf reads it (npm is pinned via package.json packageManager, not here).
+          if grep -Evq '^[a-zA-Z0-9_-]+ [a-zA-Z0-9._+-]+$' .tool-versions; then
+            echo "::error title=Invalid tool-versions::${WORKING_DIRECTORY}/.tool-versions is malformed."
             exit 1
           fi
-          if [ ! -f package-lock.json ]; then
-            echo "::error::package-lock.json is required to publish an NPM snapshot"
-            exit 1
-          fi
-
-      - name: NPM / Setup Dependencies Cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Restore asdf Cache
-        id: asdf-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        continue-on-error: true
-        with:
-          path: ~/.asdf
-          key: ${{ runner.os }}-asdf-${{ env.ASDF_BRANCH_VERSION }}-${{ hashFiles('.tool-versions') }}
-
-      - name: Save tool-versions content
-        run: |
           {
-            echo "TOOL_VERSIONS<<EOF"
+            echo "tool_versions<<EOF"
             cat .tool-versions
+            echo
             echo "EOF"
-          } >> "$GITHUB_ENV"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Setup asdf environment
-        uses: asdf-vm/actions/install@1902764435ca0dd2f3388eea723a4f92a4eb8302 # v4.0.0
-        if: steps.asdf-cache.outputs.cache-hit != 'true'
+      - name: Set up asdf-managed Node
+        if: steps.plan.outputs.should_publish == 'true'
+        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.0
         with:
-          tool_versions: ${{ env.TOOL_VERSIONS }}
+          tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
 
-      - name: Restore asdf shims to PATH
-        if: steps.asdf-cache.outputs.cache-hit == 'true'
-        run: |
-          echo "$HOME/.asdf/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.asdf/shims" >> "$GITHUB_PATH"
-          cp .tool-versions "$HOME/.tool-versions"
-
-      - name: NPM / Set npmrc registry
-        run: |
-          echo "registry=${NPM_REGISTRY}" >> "$HOME/.npmrc"
-          echo "@inditextech:registry=${NPM_REGISTRY}" >> "$HOME/.npmrc"
-
-      - name: NPM / Create Cache Folders
-        run: mkdir -p "$HOME"/.npm
-
-      - name: NPM / Install dependencies
-        run: npm ci
-
-      - name: NPM / Verify
-        run: |
-          if node -e "process.exit(require('./package.json').scripts?.verify ? 0 : 1)"; then
-            npm run verify
-          else
-            npm run lint --if-present
-            npm run format:check --if-present
-            npm run test --if-present
-            npm run build --if-present
-          fi
-
-      - name: Define snapshot version
-        run: |
-          BASE_VERSION=$(node -p "require('./package.json').version.replace(/-.*/, '')")
-          SNAPSHOT_VERSION="${BASE_VERSION}-SNAPSHOT.${{ github.run_number }}.${{ github.run_attempt }}"
-          echo "SNAPSHOT_VERSION=$SNAPSHOT_VERSION" >> "$GITHUB_ENV"
-
-      - name: NPM / Prepare snapshot
+      - name: Build and pack snapshot
+        id: pack
+        if: steps.plan.outputs.should_publish == 'true'
+        working-directory: ${{ env.WORKING_DIRECTORY }}
         env:
-          SNAPSHOT_VERSION: ${{ env.SNAPSHOT_VERSION }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          DIST_DIR: ${{ runner.temp }}/snapshot-dist
+        shell: bash
         run: |
-          npm version "$SNAPSHOT_VERSION" --no-git-tag-version
-          npm run release:prepare --if-present
-          npm run build --if-present
+          set -euo pipefail
 
-      - name: NPM / Ensure minimum npm version for trusted publishing
-        run: |
-          CURRENT_NPM=$(npm --version)
-          REQUIRED_NPM="11.5.1"
-          if printf '%s\n%s\n' "$REQUIRED_NPM" "$CURRENT_NPM" | sort -V -C; then
-            echo "npm $CURRENT_NPM already meets the minimum requirement ($REQUIRED_NPM). Skipping upgrade."
-          else
-            echo "npm $CURRENT_NPM is below the minimum requirement ($REQUIRED_NPM). Upgrading..."
-            npm install -g npm@^11.5.1 --registry="${NPM_REGISTRY}"
-            asdf reshim nodejs
-          fi
-          node --version
-          npm --version
+          strip_snapshot() { printf '%s' "${1%-SNAPSHOT}"; }
+          compute_snapshot() {  # <base X.Y.Z> -> snapshot version for this run
+            if [[ "$GITHUB_EVENT_NAME" == "issue_comment" ]]; then
+              # On-demand PR-head snapshot: encode the PR number so concurrent PRs never collide on the `next` dist-tag.
+              printf '%s-PR%s-SNAPSHOT.%s' "$1" "$PR_NUMBER" "$GITHUB_RUN_NUMBER"
+            else
+              # Trusted release-line snapshot: run number + attempt keep every re-run monotonic and unique.
+              printf '%s-SNAPSHOT.%s.%s' "$1" "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_ATTEMPT"
+            fi
+          }
+          member_dir() {  # <npm package name> -> flat workspaces member directory
+            printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+          }
 
-      - name: NPM / Verify package exists in registry
-        id: verify-package
-        run: |
-          PKG_NAME=$(node -p "require('./package.json').name")
-          ENCODED_PKG_NAME=$(node -p "encodeURIComponent(process.argv[1])" "$PKG_NAME")
-          RESPONSE_FILE=$(mktemp)
-          if ! HTTP_STATUS=$(curl -sS -o "$RESPONSE_FILE" -w "%{http_code}" \
-            --connect-timeout 10 \
-            --max-time 30 \
-            --retry 3 \
-            --retry-delay 2 \
-            --retry-all-errors \
-            "${NPM_REGISTRY}${ENCODED_PKG_NAME}"); then
-            echo "::error::Failed to verify $PKG_NAME due to npm registry connectivity error"
-            rm -f "$RESPONSE_FILE"
-            exit 1
-          fi
-          case "$HTTP_STATUS" in
-            200)
-              PARSE_STATUS=0
-              node -e "try { const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); process.exit(Object.keys(d.versions||{}).length > 0 ? 0 : 1); } catch(e) { console.error('JSON parse error:', e.message); process.exit(2); }" "$RESPONSE_FILE" || PARSE_STATUS=$?
-              case "$PARSE_STATUS" in
-                0)
-                  echo "✓ $PKG_NAME exists in registry with active versions"
-                  echo "HAS_NEW_PACKAGE=false" >> "$GITHUB_ENV"
+          mkdir -p "$DIST_DIR"
+
+          # Install, build, stamp the run-unique snapshot version per unit (no lifecycle scripts), then pack the pre-built tree; npm packs workspaces in one call while pnpm packs each member from its own dir, and `npm pkg set` stamps versions in both paths without touching any lockfile.
+          case "${PACKAGE_MANAGER:-npm}" in
+            npm)
+              npm ci
+              npm run build
+              case "$PROJECT_TYPE" in
+                single)
+                  base="$(strip_snapshot "$(jq -r '.version' package.json)")"
+                  npm pkg set "version=$(compute_snapshot "$base")"
+                  npm pack --pack-destination "$DIST_DIR"
                   ;;
-                1)
-                  echo "::warning::$PKG_NAME has no active versions (unpublished); NPM_TOKEN will be required"
-                  echo "HAS_NEW_PACKAGE=true" >> "$GITHUB_ENV"
+                workspaces)
+                  descriptor="$GITHUB_WORKSPACE/.github/inditextech-ci-node.json"
+                  while IFS= read -r package; do
+                    member="$(member_dir "$package")"
+                    base="$(strip_snapshot "$(jq -r '.version' "packages/$member/package.json")")"
+                    npm pkg set "version=$(compute_snapshot "$base")" --workspace "packages/$member"
+                  done < <(jq -er '.release.packages[]' "$descriptor")
+                  npm pack --workspaces --pack-destination "$DIST_DIR"
                   ;;
                 *)
-                  echo "::error::Failed to verify $PKG_NAME — npm registry returned invalid JSON (HTTP 200)"
-                  rm -f "$RESPONSE_FILE"
+                  echo "::error title=Invalid project type::PROJECT_TYPE must be single or workspaces."
                   exit 1
                   ;;
               esac
               ;;
-            404)
-              echo "::warning::$PKG_NAME is not present in the npm registry; NPM_TOKEN will be required"
-              echo "HAS_NEW_PACKAGE=true" >> "$GITHUB_ENV"
-              ;;
-            429|5??)
-              echo "::error::Failed to verify $PKG_NAME due to transient npm registry error (HTTP $HTTP_STATUS)"
-              exit 1
+            pnpm)
+              # Corepack activates the exact pnpm pinned in the product's package.json "packageManager" field: no floating pnpm, no product edit.
+              corepack enable
+              pnpm install --frozen-lockfile
+              pnpm run build
+              case "$PROJECT_TYPE" in
+                single)
+                  base="$(strip_snapshot "$(jq -r '.version' package.json)")"
+                  npm pkg set "version=$(compute_snapshot "$base")"
+                  pnpm pack --pack-destination "$DIST_DIR"
+                  ;;
+                workspaces)
+                  descriptor="$GITHUB_WORKSPACE/.github/inditextech-ci-node.json"
+                  while IFS= read -r package; do
+                    member="$(member_dir "$package")"
+                    base="$(strip_snapshot "$(jq -r '.version' "packages/$member/package.json")")"
+                    ( cd "packages/$member" && npm pkg set "version=$(compute_snapshot "$base")" )
+                    ( cd "packages/$member" && pnpm pack --pack-destination "$DIST_DIR" )
+                  done < <(jq -er '.release.packages[]' "$descriptor")
+                  ;;
+                *)
+                  echo "::error title=Invalid project type::PROJECT_TYPE must be single or workspaces."
+                  exit 1
+                  ;;
+              esac
               ;;
             *)
-              echo "::error::Failed to verify $PKG_NAME due to unexpected npm registry response (HTTP $HTTP_STATUS)"
+              echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."
               exit 1
               ;;
           esac
-          rm -f "$RESPONSE_FILE"
 
-      - name: NPM / Publish Snapshot (OIDC + provenance)
-        if: env.HAS_NEW_PACKAGE == 'false'
-        env:
-          NPM_CONFIG_PROVENANCE: "true"
-        run: npm publish --tag next --access public
+          echo "artifact_name=${SNAPSHOT_ARTIFACT}" >> "$GITHUB_OUTPUT"
 
-      - name: NPM / Publish Snapshot (NPM_TOKEN for new packages)
-        if: env.HAS_NEW_PACKAGE == 'true'
-        env:
-          NPM_AUTH: ${{ secrets.NPM_TOKEN }}
+      - name: Upload snapshot artifact
+        if: steps.plan.outputs.should_publish == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.SNAPSHOT_ARTIFACT }}
+          path: ${{ runner.temp }}/snapshot-dist/*.tgz
+          if-no-files-found: error
+          retention-days: 5
+
+  # Publish stage: no candidate code runs here. The privileged npm publish is INLINE in this top-level file (so OIDC job_workflow_ref == the registered workflow_ref), granting id-token: write only at this reviewer-gated npm-snapshot boundary to ship the pre-built tarball.
+  publish:
+    name: Publish snapshot
+    needs: [build]
+    # Deploy is gated on the descriptor snapshot opt-in (belt-and-suspenders with the Plan step's should_publish): the credential-bearing deploy never runs unless publish_snapshot is enabled.
+    if: >-
+      !cancelled() &&
+      needs.build.outputs.should_publish == 'true' &&
+      vars.PUBLISH_SNAPSHOT == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: npm-snapshot
+    permissions:
+      contents: read
+      id-token: write # The npm trusted-publishing OIDC boundary, inline in the registered top-level file.
+    env:
+      # Environment-scoped fallback for a package not yet a registered trusted publisher; set at JOB level so the composite's run steps inherit it, and unreachable from the build stage.
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Check out trusted publish ref
+        # Its own trusted ref, never the candidate head; the reviewed bytes ship as the pre-built artifact only.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download pre-built snapshot artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: ${{ runner.temp }}/publish-dist
+
+      - name: Publish via npm trusted publishing
+        # The composite publishes each pre-built tarball with --ignore-scripts, sets the dist-tag, enables provenance only when the repository is public, and falls back to NPM_TOKEN for an unregistered package.
+        uses: InditexTech/gh-actions/npm@5159a0213e29a091bf732553681a0de8ac712d17 # gh-actions/npm composite @ main; no release tag yet
+        with:
+          working-directory: ${{ vars.WORKING_DIRECTORY }}
+          project-type: ${{ vars.PROJECT_TYPE }}
+          dist-tag: next
+          artifact-directory: ${{ runner.temp }}/publish-dist
+        # NPM_TOKEN is provided at job level: a composite's run steps do not inherit a caller step's env.
+
+  # Release lane (jobs: release-core -> publish-npm -> github-release).
+
+  release-core:
+    name: Prepare and Build Release
+    # Lane routing: the release cut runs only on release triggers, never on a push / comment (those drive the snapshot lane above).
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    uses: ./.github/workflows/code-npm_node-release-core.yml
+    with:
+      release_type: ${{ inputs.release_type }}
+    secrets: inherit
+
+  # Govern-inject publish path: release-core packed the tarballs and THIS top-level file publishes them INLINE (so OIDC job_workflow_ref == the registered workflow_ref) through the pinned gh-actions/npm composite, holding id-token: write only in this reviewer-gated boundary; skipped in delegated mode.
+  publish-npm:
+    name: Publish ${{ matrix.release.tag }} to npm
+    needs: release-core
+    if: vars.RELEASE_LIFECYCLE != 'delegated'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: npm-registry
+    permissions:
+      contents: read
+      id-token: write # The npm trusted-publishing OIDC boundary, inline in the registered top-level file.
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.release-core.outputs.releases) }}
+    env:
+      # Environment-scoped fallback for a package not yet a registered trusted publisher; set at JOB level so the composite's run steps inherit it.
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Check out trusted publish ref
+        # Its own trusted ref, never a candidate head; the release bytes ship as the pre-built artifact only.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download pre-built release artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: npm-distributions-${{ matrix.release.tag }}
+          path: ${{ runner.temp }}/publish-dist
+
+      - name: Publish via npm trusted publishing
+        # The composite publishes each pre-built tarball with --ignore-scripts, sets the dist-tag, enables provenance only when the repository is public, and falls back to NPM_TOKEN for an unregistered package.
+        uses: InditexTech/gh-actions/npm@5159a0213e29a091bf732553681a0de8ac712d17 # gh-actions/npm composite @ main; no release tag yet
+        with:
+          working-directory: ${{ vars.WORKING_DIRECTORY }}
+          project-type: ${{ vars.PROJECT_TYPE }}
+          dist-tag: latest
+          artifact-directory: ${{ runner.temp }}/publish-dist
+        # NPM_TOKEN is provided at job level: a composite's run steps do not inherit a caller step's env.
+
+  # Delegated publish path: the project's own release:perform runs under the reviewer-gated npm-registry Environment with the ENV-TOKEN (NPM_TOKEN), NEVER id-token, and is trusted-trigger-only so it carries no pwn-request surface; the inline publish-npm job above stays the SOLE id-token boundary, preserving the single-registrable-entrypoint invariant.
+  publish-npm-delegated:
+    name: Publish delegated release to npm
+    needs: release-core
+    if: >-
+      vars.RELEASE_LIFECYCLE == 'delegated' &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: npm-registry
+    permissions:
+      contents: read
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.release-core.outputs.release_commit }}
+
+      - name: Read governed tool versions
+        id: tool-versions
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
         run: |
-          if [ -z "${NPM_AUTH:-}" ]; then
-            echo "::error::NPM_TOKEN secret is required for publishing new packages but is not set"
+          set -euo pipefail
+          if grep -Evq '^[a-zA-Z0-9_-]+ [a-zA-Z0-9._+-]+$' .tool-versions; then
+            echo "::error title=Invalid tool-versions::${WORKING_DIRECTORY}/.tool-versions is malformed."
             exit 1
           fi
-          TEMP_NPMRC="$(mktemp)"
-          trap 'rm -f "$TEMP_NPMRC"' EXIT
-          cp "$HOME/.npmrc" "$TEMP_NPMRC"
-          chmod 600 "$TEMP_NPMRC"
-          echo "//registry.npmjs.org/:_authToken=${NPM_AUTH}" >> "$TEMP_NPMRC"
-          export NPM_CONFIG_USERCONFIG="$TEMP_NPMRC"
-          npm publish --tag next --access public
+          {
+            echo "tool_versions<<EOF"
+            cat .tool-versions
+            echo
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Result / Comment on PR
-        if: always()
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+      - name: Set up asdf-managed Node
+        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.0
         with:
-          script: |
-            const status = '${{ job.status }}';
-            const authMethod = '${{ env.HAS_NEW_PACKAGE }}' === 'true'
-              ? 'NPM_TOKEN (new package detected)'
-              : 'OIDC trusted publishing (provenance)';
+          tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
+          asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
 
-            const body = status === 'success'
-              ? [
-                  '### :rocket: NPM snapshot published',
-                  '',
-                  `- Version: \`${process.env.SNAPSHOT_VERSION}\``,
-                  '- Tag: `next`',
-                  `- Auth: ${authMethod}`
-                ]
-              : [
-                  '### :x: NPM snapshot publication failed',
-                  '',
-                  'Please check the workflow logs for details.'
-                ];
-
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body.join('\n')
-            });
-
-  release:
-    name: Release
-    concurrency: code-release-${{ github.ref }}
-    permissions:
-      id-token: write
-      contents: write
-      issues: write
-      pull-requests: write
-    if: github.event_name == 'workflow_dispatch'
-      || (github.event_name == 'pull_request' && github.event.pull_request.merged == true
-      && !contains(join(github.event.pull_request.labels.*.name, ', '), 'skip-release')
-      && (contains(join(github.event.pull_request.labels.*.name, ', '), 'release-type')
-      || vars.DEVELOPMENT_FLOW == 'trunk-based-development' ))
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Validate admin permissions
-        id: permission-check
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
-        with:
-          script: |
-            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              username: context.actor
-            });
-
-            const permission = data.permission;
-            core.info(`User permission level: ${permission}`);
-
-            if (permission !== "admin") {
-              core.setFailed(`User @${context.actor} is not a repository admin.`);
-            }
-
-      - name: Get input parameters
+      - name: Install dependencies
+        # No publish credential in scope here, so dependency install scripts never see NPM_TOKEN; the token is added only to the release:perform step below.
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            RELEASE_LABELS="${{ github.event.inputs.RELEASE_TYPE }}"
-          else
-            RELEASE_LABELS="${{ join(github.event.pull_request.labels.*.name, ', ') }}"
-            if [[ $RELEASE_LABELS != *release-type/* ]]; then
-              RELEASE_LABELS="$RELEASE_LABELS, release-type/minor"
-            fi
-          fi
-          echo "RELEASE_LABELS=$RELEASE_LABELS" >> "$GITHUB_ENV"
-          BASELINE_BRANCH=${{ github.event.inputs.BASELINE || github.ref }}
-          echo "BASELINE_BRANCH=${BASELINE_BRANCH#refs/heads/}" >> "$GITHUB_ENV"
+          set -euo pipefail
+          # Package manager defaults to npm; pnpm is provisioned via corepack from the product's packageManager pin.
+          case "${PACKAGE_MANAGER:-npm}" in
+            npm)  npm ci ;;
+            pnpm) corepack enable; pnpm install --frozen-lockfile ;;
+            *)    echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."; exit 1 ;;
+          esac
 
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+      - name: Run project release:perform
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        env:
+          # Reviewer-gated Environment secret and the sole publish credential in the delegated lane; no id-token is minted here.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The release commit already passed verify and its tags are pushed; the project's release:perform publishes the tagged versions through its own package manager (corepack enabled above) and owns the publish shape.
+          case "${PACKAGE_MANAGER:-npm}" in
+            npm)  npm run release:perform ;;
+            pnpm) pnpm run release:perform ;;
+            *)    echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."; exit 1 ;;
+          esac
+
+  github-release:
+    name: Create GitHub Release ${{ matrix.release.tag }}
+    needs: [release-core, publish-npm, publish-npm-delegated]
+    # Tolerate whichever publish path was skipped for the active lifecycle.
+    if: >-
+      !cancelled() &&
+      needs.release-core.result == 'success' &&
+      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
+      (needs.publish-npm-delegated.result == 'success' || needs.publish-npm-delegated.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.release-core.outputs.releases) }}
+    steps:
+      - name: Create GitHub App token
         id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ vars.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
 
-      - name: Checkout merge commit
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Download release distributions
+        # Govern-inject only: the engine packed tarballs to attach; in delegated mode release:perform published directly, so the Release carries generated notes only.
+        if: vars.RELEASE_LIFECYCLE != 'delegated'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          ref: ${{ env.BASELINE_BRANCH }}
-          fetch-depth: 0
-          persist-credentials: false
+          name: npm-distributions-${{ matrix.release.tag }}
+          path: dist
 
-      - name: Validate NPM project
-        run: |
-          if [ ! -f package.json ]; then
-            echo "::error::package.json is required to release the NPM package"
-            exit 1
-          fi
-          if [ ! -f package-lock.json ]; then
-            echo "::error::package-lock.json is required to release the NPM package"
-            exit 1
-          fi
-
-      - name: NPM / Setup Dependencies Cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Restore asdf Cache
-        id: asdf-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        continue-on-error: true
-        with:
-          path: ~/.asdf
-          key: ${{ runner.os }}-asdf-${{ env.ASDF_BRANCH_VERSION }}-${{ hashFiles('.tool-versions') }}
-
-      - name: Save tool-versions content
-        run: |
-          {
-            echo "TOOL_VERSIONS<<EOF"
-            cat .tool-versions
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-
-      - name: Setup asdf environment
-        uses: asdf-vm/actions/install@1902764435ca0dd2f3388eea723a4f92a4eb8302 # v4.0.0
-        if: steps.asdf-cache.outputs.cache-hit != 'true'
-        with:
-          tool_versions: ${{ env.TOOL_VERSIONS }}
-          asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
-
-      - name: Restore asdf shims to PATH
-        if: steps.asdf-cache.outputs.cache-hit == 'true'
-        run: |
-          echo "$HOME/.asdf/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.asdf/shims" >> "$GITHUB_PATH"
-          cp .tool-versions "$HOME/.tool-versions"
-
-      - name: NPM / Set npmrc registry
-        run: |
-          echo "registry=${NPM_REGISTRY}" >> "$HOME/.npmrc"
-          echo "@inditextech:registry=${NPM_REGISTRY}" >> "$HOME/.npmrc"
-
-      - name: NPM / Create Cache Folders
-        run: mkdir -p "$HOME"/.npm
-
-      - name: Setup patch release type version
-        if: contains(env.RELEASE_LABELS, 'release-type/hotfix') || contains(env.RELEASE_LABELS, 'release-type/multi-hotfix') || contains(env.RELEASE_LABELS, 'release-type/patch')
-        run: echo "RELEASE_VERSION=patch" >> "$GITHUB_ENV"
-
-      - name: Setup minor release type version
-        if: contains(env.RELEASE_LABELS, 'release-type/minor')
-        run: echo "RELEASE_VERSION=minor" >> "$GITHUB_ENV"
-
-      - name: Setup minor release type version when no label set and TBD
-        if: ${{ !contains(env.RELEASE_LABELS, 'release-type') && vars.DEVELOPMENT_FLOW == 'trunk-based-development' }}
-        run: echo "RELEASE_VERSION=minor" >> "$GITHUB_ENV"
-
-      - name: Setup major release type version
-        if: contains(env.RELEASE_LABELS, 'release-type/major')
-        run: echo "RELEASE_VERSION=major" >> "$GITHUB_ENV"
-
-      - name: Prepare committer information
+      - name: Create or update GitHub Release
+        # release-core already created and pushed the annotated tag; this attaches the packed tarballs in govern-inject and is notes-only in delegated, with --clobber keeping re-runs idempotent.
         env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          GPG_PRIVATE_KEY: ${{ secrets.CI_GPG_SECRET_KEY }}
-          GPG_PASSPHRASE: ${{ secrets.CI_GPG_SECRET_KEY_PASSWORD }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_TAG: ${{ matrix.release.tag }}
+          RELEASE_VERSION: ${{ matrix.release.version }}
+          RELEASE_LIFECYCLE: ${{ vars.RELEASE_LIFECYCLE }}
+        shell: bash
         run: |
-          git config --global credential.helper store
-          cat <<EOT >> ~/.git-credentials
-          https://ci-user:$GITHUB_TOKEN@github.com
-          EOT
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(dist/*.tgz)
+          if [[ "$RELEASE_LIFECYCLE" != "delegated" && ${#assets[@]} -eq 0 ]]; then
+            echo "::error title=Missing distributions::The release artifact is empty."
+            exit 1
+          fi
 
-          # GPG: non-interactive signing setup
-          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
-          printf 'allow-loopback-pinentry\nallow-preset-passphrase\n' > ~/.gnupg/gpg-agent.conf
-          printf 'use-agent\npinentry-mode loopback\n' > ~/.gnupg/gpg.conf
-          gpgconf --kill gpg-agent || true
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
-          KEY_DATA=$(gpg --list-secret-keys --with-colons)
-          echo "$KEY_DATA" | awk -F: '/^grp:/ {print $10}' | while read -r GRIP; do
-            /usr/lib/gnupg/gpg-preset-passphrase --preset "$GRIP" <<< "$GPG_PASSPHRASE"
-          done
-
-          # Git: identity and signing
-          FPR=$(echo "$KEY_DATA" | awk -F: '/^fpr:/ {print $10; exit}')
-          git config user.name "srvcosoitxtech"
-          git config user.email "oso@inditex.com"
-          git config user.signingkey "$FPR"
-          git config commit.gpgsign true
-          git config tag.gpgsign true
-
-      - name: NPM / Install dependencies
-        run: npm ci
-
-      - name: NPM / Verify
-        run: |
-          if node -e "process.exit(require('./package.json').scripts?.verify ? 0 : 1)"; then
-            npm run verify
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            if [[ ${#assets[@]} -gt 0 ]]; then
+              gh release upload "$RELEASE_TAG" "${assets[@]}" \
+                --repo "$GITHUB_REPOSITORY" \
+                --clobber
+            fi
           else
-            npm run lint --if-present
-            npm run format:check --if-present
-            npm run test --if-present
-            npm run build --if-present
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$RELEASE_VERSION" \
+              --generate-notes
           fi
-
-      - name: Update CHANGELOG.md
-        id: update-changelog
-        uses: release-flow/keep-a-changelog-action@74931dec7ecdbfc8e38ac9ae7e8dd84c08db2f32 # v3.0.0
-        with:
-          command: bump
-          version: ${{ env.RELEASE_VERSION }}
-          changelog: CHANGELOG.md
-          fail-on-empty-release-notes: false
-          keep-unreleased-section: true
-          tag-prefix: ""
-
-      - name: Format generated CHANGELOG.md
-        run: npx prettier --write CHANGELOG.md
-
-      - name: NPM / Prepare release
-        env:
-          RELEASE_VERSION: ${{ steps.update-changelog.outputs.version }}
-        run: |
-          npm version "$RELEASE_VERSION" --no-git-tag-version
-          npm run release:prepare --if-present
-          npm run build --if-present
-
-      - name: NPM / Ensure minimum npm version for trusted publishing
-        run: |
-          CURRENT_NPM=$(npm --version)
-          REQUIRED_NPM="11.5.1"
-          if printf '%s\n%s\n' "$REQUIRED_NPM" "$CURRENT_NPM" | sort -V -C; then
-            echo "npm $CURRENT_NPM already meets the minimum requirement ($REQUIRED_NPM). Skipping upgrade."
-          else
-            echo "npm $CURRENT_NPM is below the minimum requirement ($REQUIRED_NPM). Upgrading..."
-            npm install -g npm@^11.5.1 --registry="${NPM_REGISTRY}"
-            asdf reshim nodejs
-          fi
-          node --version
-          npm --version
-
-      - name: NPM / Verify package exists in registry
-        run: |
-          PKG_NAME=$(node -p "require('./package.json').name")
-          ENCODED_PKG_NAME=$(node -p "encodeURIComponent(process.argv[1])" "$PKG_NAME")
-          RESPONSE_FILE=$(mktemp)
-          if ! HTTP_STATUS=$(curl -sS -o "$RESPONSE_FILE" -w "%{http_code}" \
-            --connect-timeout 10 \
-            --max-time 30 \
-            --retry 3 \
-            --retry-delay 2 \
-            --retry-all-errors \
-            "${NPM_REGISTRY}${ENCODED_PKG_NAME}"); then
-            echo "::error::Failed to verify $PKG_NAME due to npm registry connectivity error"
-            rm -f "$RESPONSE_FILE"
-            exit 1
-          fi
-          case "$HTTP_STATUS" in
-            200)
-              PARSE_STATUS=0
-              node -e "try { const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); process.exit(Object.keys(d.versions||{}).length > 0 ? 0 : 1); } catch(e) { console.error('JSON parse error:', e.message); process.exit(2); }" "$RESPONSE_FILE" || PARSE_STATUS=$?
-              case "$PARSE_STATUS" in
-                0)
-                  echo "✓ $PKG_NAME exists in registry with active versions"
-                  echo "HAS_NEW_PACKAGE=false" >> "$GITHUB_ENV"
-                  ;;
-                1)
-                  echo "::warning::$PKG_NAME has no active versions (unpublished); NPM_TOKEN will be required"
-                  echo "HAS_NEW_PACKAGE=true" >> "$GITHUB_ENV"
-                  ;;
-                *)
-                  echo "::error::Failed to verify $PKG_NAME — npm registry returned invalid JSON (HTTP 200)"
-                  rm -f "$RESPONSE_FILE"
-                  exit 1
-                  ;;
-              esac
-              ;;
-            404)
-              echo "::warning::$PKG_NAME is not present in the npm registry; NPM_TOKEN will be required"
-              echo "HAS_NEW_PACKAGE=true" >> "$GITHUB_ENV"
-              ;;
-            429|5??)
-              echo "::error::Failed to verify $PKG_NAME due to transient npm registry error (HTTP $HTTP_STATUS)"
-              exit 1
-              ;;
-            *)
-              echo "::error::Failed to verify $PKG_NAME due to unexpected npm registry response (HTTP $HTTP_STATUS)"
-              exit 1
-              ;;
-          esac
-          rm -f "$RESPONSE_FILE"
-
-      - name: Commit release metadata
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          RELEASE_VERSION: ${{ steps.update-changelog.outputs.version }}
-        run: |
-          git add CHANGELOG.md package.json package-lock.json
-          git commit -S -m "chore(release): ${RELEASE_VERSION}" || echo "No release metadata changes to commit"
-          git tag -s "${RELEASE_VERSION}" -m "Release ${RELEASE_VERSION}"
-          git push origin "HEAD:${BASELINE_BRANCH}" --follow-tags
-
-      - name: NPM / Publish Release (OIDC + provenance)
-        if: env.HAS_NEW_PACKAGE == 'false'
-        env:
-          NPM_CONFIG_PROVENANCE: "true"
-        run: npm publish --access public
-
-      - name: NPM / Publish Release (NPM_TOKEN for new packages)
-        if: env.HAS_NEW_PACKAGE == 'true'
-        env:
-          NPM_AUTH: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "${NPM_AUTH:-}" ]; then
-            echo "::error::NPM_TOKEN secret is required for publishing new packages but is not set"
-            exit 1
-          fi
-          TEMP_NPMRC="$(mktemp)"
-          trap 'rm -f "$TEMP_NPMRC"' EXIT
-          cp "$HOME/.npmrc" "$TEMP_NPMRC"
-          chmod 600 "$TEMP_NPMRC"
-          echo "//registry.npmjs.org/:_authToken=${NPM_AUTH}" >> "$TEMP_NPMRC"
-          export NPM_CONFIG_USERCONFIG="$TEMP_NPMRC"
-          npm publish --access public
-
-      - name: GitHub Release / Create
-        uses: ncipollo/release-action@2c591bcc8ecdcd2db72b97d6147f871fcd833ba5 # v1.14.0
-        id: github-release
-        continue-on-error: true
-        with:
-          name: ${{ steps.update-changelog.outputs.version }}
-          tag: ${{ steps.update-changelog.outputs.version }}
-          token: ${{ steps.app-token.outputs.token }}
-          body: |
-            Check out the [changelog](CHANGELOG.md) for version ${{ steps.update-changelog.outputs.version }}
