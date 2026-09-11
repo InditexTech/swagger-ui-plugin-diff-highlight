@@ -13,7 +13,7 @@
   "creation_year": 2026,
   "integrity": {
     "algorithm": "hmac-sha256",
-    "signature": "6cbdc2ef01327a5d5d9bc3da231434bb01b83dc5878f319398798c12c3904c5e"
+    "signature": "3633e607144a5e6a891f585605a8730dc743cbdf59c2c5f67164d11e77232b10"
   },
   "managed_by": "InditexTech CI governance",
   "managed_paths": {
@@ -29,10 +29,10 @@
     ".github/workflows/code-npm_node-sonarcloud-analysis.yml": "70c1c21825cde574d4744b308e198d030dbabddaa0f8ba07980be253ea6d7afa",
     ".github/workflows/code-release_preview.yml": "4e2e95d60a498eb12d97ba5c8330b1173f04b02c807140beddad06a6e225b166",
     ".github/workflows/codeql.yml": "633c0f288566fd1408e7ad545c7631e05f861ebf4ebdce3fe9586672ef065d97",
-    ".github/workflows/pr-verify.yml": "f52295fbfe81578c0a6459d8b384be569933ac78d32fff370932a8dec6943e46",
-    ".github/workflows/push-verify.yml": "fd700ba0ee23fdee9cd7ecf23ad386247f4b621b73cc1946f9ef0eda4ea07086",
-    ".github/workflows/scorecard-analysis.yml": "5bd6da647f708cced5d33411cc27aac7f7ee2be06ae541defea677d70fe80481",
-    ".github/workflows/sync-to-develop.yml": "5c35cf0b946a939d0324b1530a78e319e979f993bd1f0105e64fc4478395d8d7",
+    ".github/workflows/pr-verify.yml": "b39240fd362fb004c3b47cd4189cb527d9e27a7c37645bbe6324d2a757e34f7f",
+    ".github/workflows/push-verify.yml": "49e6e9c6a7015ea59a2bc831982b2fc4bfd1d5721302f6041170b4a15b7d56e1",
+    ".github/workflows/scorecard-analysis.yml": "9866047c5d638ee5d9246e646400cad473ce8ab0f66b444337405b8f9f324f6e",
+    ".github/workflows/sync-to-develop.yml": "1b2d0f33094052f771d91a7e7c29a666e8a9cee5cc5ca28e1f40168920ca2702",
     ".tool-versions": "5e7b05edf5d8df174df5dd99d012e57666ec9923ac8506df7dc7753ba41815fd",
     "CODE_OF_CONDUCT.md": "ce1e7a8f68a7917d48c03f9f7aae5529367f73af0e959276e889d33ea1e8d4ab",
     "CONTRIBUTING.md": "4e1264ca54a45df44b362c7533f0eba912bfa77b6f561121ae9e5e9d6aa00df3",
@@ -50,7 +50,7 @@
   "retained_paths": {},
   "schema_version": 2,
   "source_digests": {
-    "base": "5070fc83e3b1e67ddc4c2463e767ff3d0d364115c6433d2ae0de75afef2e0e63",
+    "base": "84ae844059a60d9ea8bc96910d88c912b9875aa90e48411b243f119f584fd571",
     "node": "d2f8082132a512a1770518d0995acf54caa0690a8e0fea20b5691805c6a5473c"
   }
 }

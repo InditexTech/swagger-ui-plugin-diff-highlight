@@ -27,6 +27,8 @@ jobs:
     concurrency:
       group: sync-to-develop-${{ github.repository }}-${{ github.event.pull_request.base.ref }}
       cancel-in-progress: false
+    env:
+      SYNC_BASE_REF: ${{ github.event.pull_request.base.ref }}
     steps:
       # The checkout runs *before* any App credential exists. This event carries
       # the base repository's secrets, so ordering is the cheap half of the
@@ -40,7 +42,7 @@ jobs:
           # Deliberately the base branch, not the merge SHA. Central policy
           # requires this ref, and the branch is trusted here: this event only
           # fires for an already-merged pull request.
-          ref: ${{ github.event.pull_request.base.ref }}
+          ref: ${{ env.SYNC_BASE_REF }}
 
       - name: Create GitHub App token
         id: app-token
