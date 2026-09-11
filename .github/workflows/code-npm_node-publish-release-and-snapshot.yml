@@ -56,6 +56,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       head_sha: ${{ steps.resolve.outputs.head_sha }}
     steps:
