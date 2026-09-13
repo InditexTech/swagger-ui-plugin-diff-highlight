@@ -33,7 +33,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      pull-requests: write # Publishes the calculated release preview.
+      pull-requests: write
     steps:
       - name: Check out pull request head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,10 +43,11 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Check CHANGELOG has Unreleased changes
-        # Skip for PRs that opt out of a release (skip-release label) and for the engine's automated reconcile PR, which never carries release content.
         if: >-
           !contains(github.event.pull_request.labels.*.name, 'skip-release') &&
-          github.event.pull_request.head.ref != 'automated/ci-governance-sync'
+          github.event.pull_request.head.ref != 'automated/ci-governance-sync' &&
+          github.event.pull_request.user.login != 'dependabot[bot]' &&
+          github.event.pull_request.user.login != 'renovate[bot]'
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_EVENT_NUMBER: ${{ github.event.pull_request.number }}
@@ -104,18 +105,16 @@ jobs:
             merge_strategy="Squash and merge"
           fi
 
-          # npm version helpers (mirror release-core): release version is strip-SNAPSHOT of each unit's package.json; the release-type label only drives the next-dev bump.
-          member_dir() {  # <npm package name> -> flat workspaces member directory
-            # @scope/api -> api, client_lib -> client-lib (mirrors the CREATE scaffolder).
+          member_dir() {
             printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
           }
           strip_snapshot() { printf '%s' "${1%-SNAPSHOT}"; }
-          read_version() {  # <dir under WORKING_DIRECTORY, empty for the root>
+          read_version() {
             local manifest="package.json"
             [[ -n "$1" ]] && manifest="$1/package.json"
             jq -r '.version' "$manifest"
           }
-          bump_semver() {  # <X.Y.Z> <major|minor|patch>
+          bump_semver() {
             local major minor patch
             IFS=. read -r major minor patch <<< "$1"
             case "$2" in

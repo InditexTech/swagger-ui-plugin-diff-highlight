@@ -21,7 +21,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Resolves code-scanning availability at runtime so the analysis skips cleanly (green) where no Advanced Security seat is licensed, and starts automatically once a repository becomes public or gains a seat.
   scanning-availability:
     name: Resolve code scanning availability
     if: >-
@@ -44,7 +43,7 @@ jobs:
       )
     runs-on: ubuntu-24.04
     permissions:
-      contents: read # Reads repository metadata to resolve availability.
+      contents: read
     outputs:
       enabled: ${{ steps.resolve.outputs.enabled }}
     steps:
@@ -52,21 +51,19 @@ jobs:
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
-          # Manual opt-in (CODE_SCANNING_ENABLED='true') for a seated private/internal repository whose seat status the workflow token cannot read.
           FORCE_ENABLED: ${{ vars.CODE_SCANNING_ENABLED }}
         run: |
           set -euo pipefail
-          # Visibility is always readable; the security-and-analysis block is admin-token-only, so treat a missing value as unknown.
           visibility="$(gh api "/repos/${GITHUB_REPOSITORY}" --jq '.visibility' 2>/dev/null || echo unknown)"
           seat="$(gh api "/repos/${GITHUB_REPOSITORY}" \
             --jq '.security_and_analysis.advanced_security.status // "unknown"' 2>/dev/null || echo unknown)"
           enabled=false
           if [ "${visibility}" = "public" ]; then
-            enabled=true # Code scanning is always free and available on public repositories.
+            enabled=true
           elif [ "${seat}" = "enabled" ]; then
-            enabled=true # A Code Security seat is attached, so analysis is licensed.
+            enabled=true
           elif [ "${FORCE_ENABLED:-}" = "true" ]; then
-            enabled=true # Operator opted this repository in explicitly.
+            enabled=true
           fi
           echo "Code scanning availability: visibility=${visibility} seat=${seat} enabled=${enabled}"
           echo "enabled=${enabled}" >> "${GITHUB_OUTPUT}"
@@ -77,17 +74,16 @@ jobs:
     if: needs.scanning-availability.outputs.enabled == 'true'
     runs-on: ubuntu-24.04
     permissions:
-      actions: read # Lets CodeQL inspect workflow metadata.
+      actions: read
       contents: read
-      packages: read # Lets CodeQL resolve package metadata during analysis.
-      security-events: write # Uploads CodeQL results to Code Scanning.
+      packages: read
+      security-events: write
     strategy:
       fail-fast: false
       matrix:
         include:
           - language: actions
             build-mode: none
-          # JS/TS is analyzed buildless: CodeQL's extractor reads source directly, so no Node/npm setup or workspace build is required.
           - language: javascript-typescript
             build-mode: none
     steps:
@@ -101,13 +97,9 @@ jobs:
         with:
           build-mode: ${{ matrix.build-mode }}
           languages: ${{ matrix.language }}
-          # These three `actions` queries are false positives on the governed lanes: CodeQL propagates a caller's issue_comment/workflow_dispatch triggers through `workflow_call` and cannot evaluate the job-level `if:` guards, yet every flagged site is mitigated in-template (40-hex merge-commit SHA validation, whitelisted bump labels, no PR-head code in privileged jobs); scoped to these rule IDs only.
+          # Release caches are branch-scoped, so a release-core build can never write the default-branch cache.
           config: |
             query-filters:
-              - exclude:
-                  id: actions/untrusted-checkout/critical
-              - exclude:
-                  id: actions/envvar-injection/critical
               - exclude:
                   id: actions/cache-poisoning/poisonable-step
 
