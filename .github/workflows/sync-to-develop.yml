@@ -159,13 +159,17 @@ jobs:
           body="$(printf '%s\n\n- #%s' \
             '**Automated pull request** related to:' \
             "$SOURCE_PULL_REQUEST")"
-          existing_pr="$(gh pr list \
-            --repo "$GITHUB_REPOSITORY" \
-            --head "$SYNC_BRANCH" \
-            --base "$DEVELOP_BRANCH" \
-            --state open \
-            --json isCrossRepository,number \
-            --jq '[.[] | select(.isCrossRepository == false)][0].number // empty')"
+          find_existing_pr() {
+            gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --head "$SYNC_BRANCH" \
+              --base "$DEVELOP_BRANCH" \
+              --state open \
+              --json isCrossRepository,number \
+              --jq '[.[] | select(.isCrossRepository == false)][0].number // empty'
+          }
+
+          existing_pr="$(find_existing_pr)"
           has_internal_label="$(gh label list \
             --repo "$GITHUB_REPOSITORY" \
             --search kind/internal \
@@ -187,23 +191,46 @@ jobs:
               echo "::warning title=Missing label::The kind/internal label is not available."
             fi
           else
+            create_args=(
+              pr create
+              --repo "$GITHUB_REPOSITORY"
+              --base "$DEVELOP_BRANCH"
+              --head "$SYNC_BRANCH"
+              --title "Sync from $BASE_BRANCH to $DEVELOP_BRANCH"
+              --body "$body"
+            )
             if [[ "$has_internal_label" == "true" ]]; then
-              gh pr create \
-                --repo "$GITHUB_REPOSITORY" \
-                --base "$DEVELOP_BRANCH" \
-                --head "$SYNC_BRANCH" \
-                --title "Sync from $BASE_BRANCH to $DEVELOP_BRANCH" \
-                --label kind/internal \
-                --body "$body"
+              create_args+=(--label kind/internal)
             else
               echo "::warning title=Missing label::The kind/internal label is not available."
-              gh pr create \
-                --repo "$GITHUB_REPOSITORY" \
-                --base "$DEVELOP_BRANCH" \
-                --head "$SYNC_BRANCH" \
-                --title "Sync from $BASE_BRANCH to $DEVELOP_BRANCH" \
-                --body "$body"
             fi
+
+            for attempt in 1 2 3; do
+              if create_output="$(gh "${create_args[@]}" 2>&1)"; then
+                printf '%s\n' "$create_output"
+                break
+              else
+                create_status=$?
+              fi
+
+              # A 5xx can arrive after GitHub has committed the mutation. Read
+              # the exact head/base pair before retrying, never create blindly.
+              existing_pr="$(find_existing_pr)"
+              if [[ -n "$existing_pr" ]]; then
+                echo "::notice title=Sync pull request reconciled::PR #$existing_pr exists after a failed create request."
+                break
+              fi
+
+              if [[ "$attempt" -lt 3 ]] &&
+                [[ "$create_output" =~ HTTP\ (500|502|503|504): ]]; then
+                echo "::warning title=Transient PR creation failure::Attempt $attempt failed; retrying after reconciliation."
+                sleep "$((attempt * 5))"
+                continue
+              fi
+
+              printf '%s\n' "$create_output" >&2
+              exit "$create_status"
+            done
           fi
 
       - name: Comment on source pull request after failure
