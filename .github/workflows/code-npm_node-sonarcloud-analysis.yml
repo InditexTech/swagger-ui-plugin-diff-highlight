@@ -63,7 +63,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Reject any .tool-versions line that is not a strict "<plugin> <version>" before asdf reads it (npm is pinned via package.json packageManager, not here).
           if grep -Evq '^[a-zA-Z0-9_-]+ [a-zA-Z0-9._+-]+$' .tool-versions; then
             echo "::error title=Invalid tool-versions::${WORKING_DIRECTORY}/.tool-versions is malformed."
             exit 1
@@ -76,7 +75,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Set up asdf-managed Node
-        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.0
+        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
         with:
           tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
@@ -86,7 +85,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # `test` is the governed lifecycle script and must emit the lcov report the scanner reads; build runs first so the scanner sees buildable sources.
           case "$PROJECT_TYPE" in
             single|workspaces)
               npm ci
@@ -103,7 +101,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Resolve sonar.sources and lcov coverage paths from the repository root; a workspaces build contributes every member so none is silently excluded.
           case "$PROJECT_TYPE" in
             single)
               sonar_sources="${WORKING_DIRECTORY}"
@@ -114,12 +111,10 @@ jobs:
               coverage=()
               for member_dir in "${WORKING_DIRECTORY}"/packages/*/; do
                 member_dir="${member_dir%/}"
-                # Only members with a package.json are analyzable units; skip stray directories under packages/.
                 if [[ ! -f "${member_dir}/package.json" ]]; then
                   continue
                 fi
                 sources+=("${member_dir}")
-                # Attribute each member's coverage from its own lcov report; the scanner ignores a path a member without tests never wrote.
                 coverage+=("${member_dir}/coverage/lcov.info")
               done
               if [[ "${#sources[@]}" -eq 0 ]]; then
@@ -134,6 +129,12 @@ jobs:
               exit 1
               ;;
           esac
+          for governed_value in "$sonar_sources" "$sonar_coverage"; do
+            if [[ "$governed_value" == *$'\n'* ]]; then
+              echo "::error title=Invalid Sonar scope::Resolved analysis paths must not contain newlines." >&2
+              exit 1
+            fi
+          done
           {
             echo "SONAR_SOURCES=${sonar_sources}"
             echo "SONAR_COVERAGE_PATHS=${sonar_coverage}"
