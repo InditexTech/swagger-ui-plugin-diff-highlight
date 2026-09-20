@@ -277,7 +277,7 @@ jobs:
           path: ${{ runner.temp }}/publish-dist
 
       - name: Publish via npm trusted publishing
-        uses: InditexTech/gh-actions/npm@977030536dbdb52a7fe2fd5979510fd6a225d035 # v1.1.0
+        uses: InditexTech/gh-actions/npm@83ec0fe0f13556d2b31f79fc29dd0fe65c67f86f # v1.1.3
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         with:
@@ -330,7 +330,7 @@ jobs:
           path: ${{ runner.temp }}/publish-dist
 
       - name: Publish via npm trusted publishing
-        uses: InditexTech/gh-actions/npm@977030536dbdb52a7fe2fd5979510fd6a225d035 # v1.1.0
+        uses: InditexTech/gh-actions/npm@83ec0fe0f13556d2b31f79fc29dd0fe65c67f86f # v1.1.3
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         with:
@@ -549,7 +549,7 @@ jobs:
           git -C "$source" push --atomic origin "$RELEASE_COMMIT:$EXPECTED_REF" "${tag_refs[@]}"
 
       - name: Publish verified delegated tarballs via npm trusted publishing
-        uses: InditexTech/gh-actions/npm@977030536dbdb52a7fe2fd5979510fd6a225d035 # v1.1.0
+        uses: InditexTech/gh-actions/npm@83ec0fe0f13556d2b31f79fc29dd0fe65c67f86f # v1.1.3
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         with:
