@@ -127,12 +127,12 @@ jobs:
           esac
           case "${PACKAGE_MANAGER:-npm}" in
             npm)
-              npm ci
+              npm ci --ignore-scripts
               npm run verify
               ;;
             pnpm)
               corepack enable
-              pnpm install --frozen-lockfile
+              pnpm install --frozen-lockfile --ignore-scripts
               pnpm run verify
               ;;
             *)
@@ -271,8 +271,8 @@ jobs:
         run: |
           set -euo pipefail
           case "${PACKAGE_MANAGER:-npm}" in
-            npm)  npm ci ;;
-            pnpm) corepack enable; pnpm install --frozen-lockfile ;;
+            npm)  npm ci --ignore-scripts ;;
+            pnpm) corepack enable; pnpm install --frozen-lockfile --ignore-scripts ;;
             *)    echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."; exit 1 ;;
           esac
 
@@ -739,10 +739,16 @@ jobs:
         env:
           HANDOFF_DIR: ${{ runner.temp }}/node-delegated-release-handoff
           RELEASES: ${{ steps.delegated-plan.outputs.releases_intermediate }}
+          AUTHORIZED_COMMIT: ${{ steps.delegated-source.outputs.release_commit }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         shell: bash
         run: |
           set -euo pipefail
+          workspace_commit="$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+          if [[ "$workspace_commit" != "$AUTHORIZED_COMMIT" ]]; then
+            echo "::error title=Release source race::The workspace commit ($workspace_commit) is not the sealed release source ($AUTHORIZED_COMMIT). Aborting before any packaging."
+            exit 1
+          fi
           DIST_DIR="$HANDOFF_DIR/tarballs"
           RECORDS_FILE="$HANDOFF_DIR/tarballs.jsonl"
           rm -rf "$HANDOFF_DIR"
@@ -1087,6 +1093,22 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.prepare-release.outputs.release_commit }}
 
+      - name: Verify sealed release commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ needs.prepare-release.outputs.release_commit }}"
+          workspace="$(git rev-parse HEAD)"
+          if [[ "$workspace" != "$expected" ]]; then
+            echo "::error title=Sealed commit mismatch::The publish job checked out $workspace but the sealed release commit is $expected. Aborting."
+            exit 1
+          fi
+          digest="${{ needs.prepare-release.outputs.handoff_digest }}"
+          if [[ -n "$digest" && ! -f .ci-governance-handoff-digest ]]; then
+            echo "::error title=Missing handoff digest::The delegated release handoff artifact is absent for digest $digest."
+            exit 1
+          fi
+
       - name: Read governed tool versions
         id: tool-versions
         working-directory: ${{ env.WORKING_DIRECTORY }}
@@ -1122,7 +1144,7 @@ jobs:
           mkdir -p "$DIST_DIR"
           case "${PACKAGE_MANAGER:-npm}" in
             npm)
-              npm ci
+              npm ci --ignore-scripts
               npm run build
               case "$PROJECT_TYPE" in
                 single)
@@ -1141,7 +1163,7 @@ jobs:
               ;;
             pnpm)
               corepack enable
-              pnpm install --frozen-lockfile
+              pnpm install --frozen-lockfile --ignore-scripts
               pnpm run build
               case "$PROJECT_TYPE" in
                 single)
