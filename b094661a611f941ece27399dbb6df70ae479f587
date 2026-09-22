@@ -1,0 +1,23 @@
+example/package-lock.json
+  s_833a50a614be00::t_6148882c0b8f98 3027-3029
+example/package.json
+  s_833a50a614be00::t_6241ff2901224d 17-19
+package.json
+  s_833a50a614be00::t_176c2897f8f4ee 93-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b094661a611f941ece27399dbb6df70ae479f587",
+  "prompts": {},
+  "sessions": {
+    "s_833a50a614be00": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "ddfc22fa-19f1-4f00-a24c-28877b4f2932",
+        "model": "unknown"
+      },
+      "human_author": "Bruno Luis Goncalves Pedro <brunolgp@inditex.com>"
+    }
+  }
+}
