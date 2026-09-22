@@ -1,0 +1,19 @@
+CONTRIBUTING.md
+  s_1c75c67c4de164::t_9769ad640a1226 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6e9aa083cba9150401f921f81a0dca5d4502875c",
+  "prompts": {},
+  "sessions": {
+    "s_1c75c67c4de164": {
+      "agent_id": {
+        "tool": "github-copilot-cli",
+        "id": "8a3a0d73-26b1-47c4-b831-834dffae5cb4",
+        "model": "zai-org/GLM-5.3-Flash"
+      },
+      "human_author": "amagan <andreamr@ext.zara.com>"
+    }
+  }
+}
