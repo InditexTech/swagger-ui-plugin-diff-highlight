@@ -114,6 +114,19 @@ jobs:
               github.sha
             }}
 
+      - name: Betrayal check for comment-authorized snapshot
+        if: github.event_name == 'issue_comment'
+        shell: bash
+        run: |
+          set -euo pipefail
+          authorized="${{ needs.authorize.outputs.head_sha }}"
+          checked="$(git rev-parse HEAD)"
+          if [[ "$checked" != "$authorized" ]]; then
+            echo "::error title=Snapshot head race::The pull request advanced since the /publish-snapshot authorization (authorized $authorized, workspace $checked). Aborting before any build or publish."
+            exit 1
+          fi
+          echo "::notice title=Snapshot head verified::Checked-out commit matches the authorized snapshot head."
+
       - name: Plan snapshot
         id: plan
         env:
