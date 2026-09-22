@@ -44,5 +44,3 @@ project's structure or architecture.
 and its purpose.
 - Be sure to link the corresponding issue in your pull request to maintain proper tracking of contributions.
 - Remember to add license and copyright information following the [REUSE Specification](https://reuse.software/spec/#copyright-and-licensing-information).
-
-## Development
