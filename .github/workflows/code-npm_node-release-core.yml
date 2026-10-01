@@ -24,6 +24,12 @@ on:
     secrets:
       APP_PRIVATE_KEY:
         required: true
+      CI_GPG_SECRET_KEY:
+        description: Armored GPG secret key signing release commits and tags.
+        required: false
+      CI_GPG_SECRET_KEY_PASSWORD:
+        description: Passphrase protecting CI_GPG_SECRET_KEY.
+        required: false
 
 permissions:
   contents: read
@@ -586,6 +592,13 @@ jobs:
             rm -f "$tmp"
           fi
 
+      - name: Configure release git signing
+        uses: InditexTech/gh-actions/configure-release-git@ca5ff3f7d69ee5a3cb026ac5585d680f083d8f7b
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          gpg-secret-key: ${{ secrets.CI_GPG_SECRET_KEY }}
+          gpg-passphrase: ${{ secrets.CI_GPG_SECRET_KEY_PASSWORD }}
+
       - name: Commit and stage release
         if: vars.RELEASE_LIFECYCLE != 'delegated' && steps.release-plan.outputs.resume != 'true'
         id: release-commit
@@ -604,8 +617,6 @@ jobs:
             echo "::error title=Missing release metadata::Versioning did not produce changes to commit."
             exit 1
           fi
-          git config user.name "${APP_SLUG}[bot]"
-          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
           git commit -m "[node-release] Prepare release"
 
           while IFS= read -r record; do
@@ -626,9 +637,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           case ",$RELEASE_LABELS," in
             *",release-type/major,"*) release_bump="major" ;;
@@ -1284,6 +1292,13 @@ jobs:
           tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
 
+      - name: Configure release git signing
+        uses: InditexTech/gh-actions/configure-release-git@ca5ff3f7d69ee5a3cb026ac5585d680f083d8f7b
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          gpg-secret-key: ${{ secrets.CI_GPG_SECRET_KEY }}
+          gpg-passphrase: ${{ secrets.CI_GPG_SECRET_KEY_PASSWORD }}
+
       - name: Promote the release to the default branch
         id: promote
         if: vars.RELEASE_LIFECYCLE != 'delegated' && (needs.build-distributions.result == 'success' || needs.build-distributions.result == 'skipped')
@@ -1299,8 +1314,6 @@ jobs:
         run: |
           set -euo pipefail
           gh auth setup-git
-          git config user.name "${APP_SLUG}[bot]"
-          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
 
           git fetch --no-tags origin "+${STAGING_REF}:refs/ci-governance/staged" 2>/dev/null || true
           if [[ "$(git ls-remote origin "$EXPECTED_REF" | cut -f1)" == "$RELEASE_COMMIT" ]]; then
@@ -1324,7 +1337,7 @@ jobs:
               echo "::error title=Tag conflict::$tag already exists."
               exit 1
             fi
-            git tag -a "$tag" -m "Release $version"
+            git tag -s "$tag" -m "Release $version"
             tag_refs+=("refs/tags/$tag")
           done < <(jq -c '.[]' <<< "$RELEASES")
 
@@ -1344,8 +1357,6 @@ jobs:
         run: |
           set -euo pipefail
           gh auth setup-git
-          git config user.name "${APP_SLUG}[bot]"
-          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
 
           descriptor="$GITHUB_WORKSPACE/.github/inditextech-ci-node.json"
 
