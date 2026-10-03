@@ -471,6 +471,21 @@ jobs:
           }
 
           if [[ "$resume" == "false" ]]; then
+            # A workflow_dispatch never passes through the Release Preview
+            # CHANGELOG gate, so a fresh cut must prove there is something to
+            # release: refuse an Unreleased section without a content entry.
+            if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+              if [[ ! -f CHANGELOG.md ]] || ! awk '
+                $0 ~ /^##[[:space:]]+\[Unreleased\][[:space:]]*$/ { unreleased = 1; next }
+                unreleased && $0 ~ /^##[[:space:]]/ { exit }
+                unreleased && $0 ~ /^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]+/ { entry = 1 }
+                END { exit !(unreleased && entry) }
+              ' CHANGELOG.md; then
+                echo "::error title=No CHANGELOG changes::A dispatched release needs a substantive entry under ## [Unreleased]."
+                exit 1
+              fi
+            fi
+
             write_records
             releases="$(jq -cs . "$records_file")"
 
@@ -533,6 +548,11 @@ jobs:
 
             primary_version="$(jq -r '.[0].version' <<< "$releases")"
             echo "RELEASE_VERSION=$primary_version" >> "$GITHUB_ENV"
+            # CHANGELOG links must name real tags: independent workspaces tag
+            # <member>-<version>, so the prefix is the primary tag minus its
+            # version (empty for single and locked-step releases).
+            primary_tag="$(jq -r '.[0].tag' <<< "$releases")"
+            echo "CHANGELOG_TAG_PREFIX=${primary_tag%"$primary_version"}" >> "$GITHUB_ENV"
             echo "RELEASE_BUMP=$release_bump" >> "$GITHUB_ENV"
           else
             write_records
@@ -563,12 +583,13 @@ jobs:
           changelog: ${{ env.WORKING_DIRECTORY }}/CHANGELOG.md
           fail-on-empty-release-notes: false
           keep-unreleased-section: true
-          tag-prefix: ""
+          tag-prefix: ${{ env.CHANGELOG_TAG_PREFIX }}
 
       - name: Reconcile CHANGELOG version with release
         if: vars.RELEASE_LIFECYCLE != 'delegated' && steps.release-plan.outputs.resume != 'true'
         env:
           RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+          TAG_PREFIX: ${{ env.CHANGELOG_TAG_PREFIX }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         shell: bash
         run: |
@@ -582,11 +603,13 @@ jobs:
           if [[ "$cl_ver" != "$RELEASE_VERSION" ]]; then
             echo "::notice title=CHANGELOG version reconciled::keep-a-changelog wrote ${cl_ver}; re-anchoring to release ${RELEASE_VERSION}."
             cl_ver_re="${cl_ver//./\\.}"
+            tag_prefix="${TAG_PREFIX:-}"
+            tp_re="${tag_prefix//./\\.}"
             tmp="$(mktemp)"
             sed -E \
               -e "s@^## \[${cl_ver_re}\]( - )@## [${RELEASE_VERSION}]\1@" \
-              -e "s@^(\[Unreleased\]: .*/compare/)${cl_ver_re}(\.\.\.HEAD)@\1${RELEASE_VERSION}\2@" \
-              -e "s@^\[${cl_ver_re}\]: (.*/)(compare/[^ ]*\.\.\.|releases/tag/)${cl_ver_re}@[${RELEASE_VERSION}]: \1\2${RELEASE_VERSION}@" \
+              -e "s@^(\[Unreleased\]: .*/compare/${tp_re})${cl_ver_re}(\.\.\.HEAD)@\1${RELEASE_VERSION}\2@" \
+              -e "s@^\[${cl_ver_re}\]: (.*/)(compare/[^ ]*\.\.\.|releases/tag/)${tp_re}${cl_ver_re}@[${RELEASE_VERSION}]: \1\2${tag_prefix}${RELEASE_VERSION}@" \
               "$cl" > "$tmp"
             cat "$tmp" > "$cl"
             rm -f "$tmp"
@@ -701,6 +724,11 @@ jobs:
 
           echo "RELEASE_BUMP=$release_bump" >> "$GITHUB_ENV"
           echo "RELEASE_VERSION=$primary_version" >> "$GITHUB_ENV"
+          # CHANGELOG links must name real tags: independent workspaces tag
+          # <member>-<version>, so the prefix is the primary tag minus its
+          # version (empty for single and locked-step releases).
+          primary_tag="$(jq -r '.[0].tag' <<< "$releases")"
+          echo "CHANGELOG_TAG_PREFIX=${primary_tag%"$primary_version"}" >> "$GITHUB_ENV"
 
           {
             echo "expected_ref=refs/heads/$BASELINE_BRANCH"
@@ -721,12 +749,13 @@ jobs:
           changelog: ${{ env.WORKING_DIRECTORY }}/CHANGELOG.md
           fail-on-empty-release-notes: false
           keep-unreleased-section: true
-          tag-prefix: ""
+          tag-prefix: ${{ env.CHANGELOG_TAG_PREFIX }}
 
       - name: Reconcile CHANGELOG version with delegated release
         if: vars.RELEASE_LIFECYCLE == 'delegated' && steps.delegated-plan.outputs.changelog_pending == 'true'
         env:
           RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+          TAG_PREFIX: ${{ env.CHANGELOG_TAG_PREFIX }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         shell: bash
         run: |
@@ -740,11 +769,13 @@ jobs:
           if [[ "$cl_ver" != "$RELEASE_VERSION" ]]; then
             echo "::notice title=CHANGELOG version reconciled::keep-a-changelog wrote ${cl_ver}; re-anchoring to release ${RELEASE_VERSION}."
             cl_ver_re="${cl_ver//./\\.}"
+            tag_prefix="${TAG_PREFIX:-}"
+            tp_re="${tag_prefix//./\\.}"
             tmp="$(mktemp)"
             sed -E \
               -e "s@^## \[${cl_ver_re}\]( - )@## [${RELEASE_VERSION}]\1@" \
-              -e "s@^(\[Unreleased\]: .*/compare/)${cl_ver_re}(\.\.\.HEAD)@\1${RELEASE_VERSION}\2@" \
-              -e "s@^\[${cl_ver_re}\]: (.*/)(compare/[^ ]*\.\.\.|releases/tag/)${cl_ver_re}@[${RELEASE_VERSION}]: \1\2${RELEASE_VERSION}@" \
+              -e "s@^(\[Unreleased\]: .*/compare/${tp_re})${cl_ver_re}(\.\.\.HEAD)@\1${RELEASE_VERSION}\2@" \
+              -e "s@^\[${cl_ver_re}\]: (.*/)(compare/[^ ]*\.\.\.|releases/tag/)${tp_re}${cl_ver_re}@[${RELEASE_VERSION}]: \1\2${tag_prefix}${RELEASE_VERSION}@" \
               "$cl" > "$tmp"
             cat "$tmp" > "$cl"
             rm -f "$tmp"
