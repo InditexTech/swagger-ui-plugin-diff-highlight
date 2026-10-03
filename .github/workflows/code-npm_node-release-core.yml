@@ -24,6 +24,12 @@ on:
     secrets:
       APP_PRIVATE_KEY:
         required: true
+      CI_GPG_SECRET_KEY:
+        description: Armored GPG secret key signing release commits and tags.
+        required: false
+      CI_GPG_SECRET_KEY_PASSWORD:
+        description: Passphrase protecting CI_GPG_SECRET_KEY.
+        required: false
 
 permissions:
   contents: read
@@ -465,6 +471,21 @@ jobs:
           }
 
           if [[ "$resume" == "false" ]]; then
+            # A workflow_dispatch never passes through the Release Preview
+            # CHANGELOG gate, so a fresh cut must prove there is something to
+            # release: refuse an Unreleased section without a content entry.
+            if [[ "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+              if [[ ! -f CHANGELOG.md ]] || ! awk '
+                $0 ~ /^##[[:space:]]+\[Unreleased\][[:space:]]*$/ { unreleased = 1; next }
+                unreleased && $0 ~ /^##[[:space:]]/ { exit }
+                unreleased && $0 ~ /^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]+/ { entry = 1 }
+                END { exit !(unreleased && entry) }
+              ' CHANGELOG.md; then
+                echo "::error title=No CHANGELOG changes::A dispatched release needs a substantive entry under ## [Unreleased]."
+                exit 1
+              fi
+            fi
+
             write_records
             releases="$(jq -cs . "$records_file")"
 
@@ -527,6 +548,11 @@ jobs:
 
             primary_version="$(jq -r '.[0].version' <<< "$releases")"
             echo "RELEASE_VERSION=$primary_version" >> "$GITHUB_ENV"
+            # CHANGELOG links must name real tags: independent workspaces tag
+            # <member>-<version>, so the prefix is the primary tag minus its
+            # version (empty for single and locked-step releases).
+            primary_tag="$(jq -r '.[0].tag' <<< "$releases")"
+            echo "CHANGELOG_TAG_PREFIX=${primary_tag%"$primary_version"}" >> "$GITHUB_ENV"
             echo "RELEASE_BUMP=$release_bump" >> "$GITHUB_ENV"
           else
             write_records
@@ -557,12 +583,13 @@ jobs:
           changelog: ${{ env.WORKING_DIRECTORY }}/CHANGELOG.md
           fail-on-empty-release-notes: false
           keep-unreleased-section: true
-          tag-prefix: ""
+          tag-prefix: ${{ env.CHANGELOG_TAG_PREFIX }}
 
       - name: Reconcile CHANGELOG version with release
         if: vars.RELEASE_LIFECYCLE != 'delegated' && steps.release-plan.outputs.resume != 'true'
         env:
           RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+          TAG_PREFIX: ${{ env.CHANGELOG_TAG_PREFIX }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         shell: bash
         run: |
@@ -576,15 +603,24 @@ jobs:
           if [[ "$cl_ver" != "$RELEASE_VERSION" ]]; then
             echo "::notice title=CHANGELOG version reconciled::keep-a-changelog wrote ${cl_ver}; re-anchoring to release ${RELEASE_VERSION}."
             cl_ver_re="${cl_ver//./\\.}"
+            tag_prefix="${TAG_PREFIX:-}"
+            tp_re="${tag_prefix//./\\.}"
             tmp="$(mktemp)"
             sed -E \
               -e "s@^## \[${cl_ver_re}\]( - )@## [${RELEASE_VERSION}]\1@" \
-              -e "s@^(\[Unreleased\]: .*/compare/)${cl_ver_re}(\.\.\.HEAD)@\1${RELEASE_VERSION}\2@" \
-              -e "s@^\[${cl_ver_re}\]: (.*/)(compare/[^ ]*\.\.\.|releases/tag/)${cl_ver_re}@[${RELEASE_VERSION}]: \1\2${RELEASE_VERSION}@" \
+              -e "s@^(\[Unreleased\]: .*/compare/${tp_re})${cl_ver_re}(\.\.\.HEAD)@\1${RELEASE_VERSION}\2@" \
+              -e "s@^\[${cl_ver_re}\]: (.*/)(compare/[^ ]*\.\.\.|releases/tag/)${tp_re}${cl_ver_re}@[${RELEASE_VERSION}]: \1\2${tag_prefix}${RELEASE_VERSION}@" \
               "$cl" > "$tmp"
             cat "$tmp" > "$cl"
             rm -f "$tmp"
           fi
+
+      - name: Configure release git signing
+        uses: InditexTech/gh-actions/configure-release-git@ca5ff3f7d69ee5a3cb026ac5585d680f083d8f7b
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          gpg-secret-key: ${{ secrets.CI_GPG_SECRET_KEY }}
+          gpg-passphrase: ${{ secrets.CI_GPG_SECRET_KEY_PASSWORD }}
 
       - name: Commit and stage release
         if: vars.RELEASE_LIFECYCLE != 'delegated' && steps.release-plan.outputs.resume != 'true'
@@ -604,8 +640,6 @@ jobs:
             echo "::error title=Missing release metadata::Versioning did not produce changes to commit."
             exit 1
           fi
-          git config user.name "${APP_SLUG}[bot]"
-          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
           git commit -m "[node-release] Prepare release"
 
           while IFS= read -r record; do
@@ -626,9 +660,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           case ",$RELEASE_LABELS," in
             *",release-type/major,"*) release_bump="major" ;;
@@ -693,6 +724,11 @@ jobs:
 
           echo "RELEASE_BUMP=$release_bump" >> "$GITHUB_ENV"
           echo "RELEASE_VERSION=$primary_version" >> "$GITHUB_ENV"
+          # CHANGELOG links must name real tags: independent workspaces tag
+          # <member>-<version>, so the prefix is the primary tag minus its
+          # version (empty for single and locked-step releases).
+          primary_tag="$(jq -r '.[0].tag' <<< "$releases")"
+          echo "CHANGELOG_TAG_PREFIX=${primary_tag%"$primary_version"}" >> "$GITHUB_ENV"
 
           {
             echo "expected_ref=refs/heads/$BASELINE_BRANCH"
@@ -713,12 +749,13 @@ jobs:
           changelog: ${{ env.WORKING_DIRECTORY }}/CHANGELOG.md
           fail-on-empty-release-notes: false
           keep-unreleased-section: true
-          tag-prefix: ""
+          tag-prefix: ${{ env.CHANGELOG_TAG_PREFIX }}
 
       - name: Reconcile CHANGELOG version with delegated release
         if: vars.RELEASE_LIFECYCLE == 'delegated' && steps.delegated-plan.outputs.changelog_pending == 'true'
         env:
           RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+          TAG_PREFIX: ${{ env.CHANGELOG_TAG_PREFIX }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         shell: bash
         run: |
@@ -732,11 +769,13 @@ jobs:
           if [[ "$cl_ver" != "$RELEASE_VERSION" ]]; then
             echo "::notice title=CHANGELOG version reconciled::keep-a-changelog wrote ${cl_ver}; re-anchoring to release ${RELEASE_VERSION}."
             cl_ver_re="${cl_ver//./\\.}"
+            tag_prefix="${TAG_PREFIX:-}"
+            tp_re="${tag_prefix//./\\.}"
             tmp="$(mktemp)"
             sed -E \
               -e "s@^## \[${cl_ver_re}\]( - )@## [${RELEASE_VERSION}]\1@" \
-              -e "s@^(\[Unreleased\]: .*/compare/)${cl_ver_re}(\.\.\.HEAD)@\1${RELEASE_VERSION}\2@" \
-              -e "s@^\[${cl_ver_re}\]: (.*/)(compare/[^ ]*\.\.\.|releases/tag/)${cl_ver_re}@[${RELEASE_VERSION}]: \1\2${RELEASE_VERSION}@" \
+              -e "s@^(\[Unreleased\]: .*/compare/${tp_re})${cl_ver_re}(\.\.\.HEAD)@\1${RELEASE_VERSION}\2@" \
+              -e "s@^\[${cl_ver_re}\]: (.*/)(compare/[^ ]*\.\.\.|releases/tag/)${tp_re}${cl_ver_re}@[${RELEASE_VERSION}]: \1\2${tag_prefix}${RELEASE_VERSION}@" \
               "$cl" > "$tmp"
             cat "$tmp" > "$cl"
             rm -f "$tmp"
@@ -1284,6 +1323,13 @@ jobs:
           tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
 
+      - name: Configure release git signing
+        uses: InditexTech/gh-actions/configure-release-git@ca5ff3f7d69ee5a3cb026ac5585d680f083d8f7b
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          gpg-secret-key: ${{ secrets.CI_GPG_SECRET_KEY }}
+          gpg-passphrase: ${{ secrets.CI_GPG_SECRET_KEY_PASSWORD }}
+
       - name: Promote the release to the default branch
         id: promote
         if: vars.RELEASE_LIFECYCLE != 'delegated' && (needs.build-distributions.result == 'success' || needs.build-distributions.result == 'skipped')
@@ -1299,8 +1345,6 @@ jobs:
         run: |
           set -euo pipefail
           gh auth setup-git
-          git config user.name "${APP_SLUG}[bot]"
-          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
 
           git fetch --no-tags origin "+${STAGING_REF}:refs/ci-governance/staged" 2>/dev/null || true
           if [[ "$(git ls-remote origin "$EXPECTED_REF" | cut -f1)" == "$RELEASE_COMMIT" ]]; then
@@ -1324,7 +1368,7 @@ jobs:
               echo "::error title=Tag conflict::$tag already exists."
               exit 1
             fi
-            git tag -a "$tag" -m "Release $version"
+            git tag -s "$tag" -m "Release $version"
             tag_refs+=("refs/tags/$tag")
           done < <(jq -c '.[]' <<< "$RELEASES")
 
@@ -1344,8 +1388,6 @@ jobs:
         run: |
           set -euo pipefail
           gh auth setup-git
-          git config user.name "${APP_SLUG}[bot]"
-          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
 
           descriptor="$GITHUB_WORKSPACE/.github/inditextech-ci-node.json"
 

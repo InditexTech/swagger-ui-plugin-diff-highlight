@@ -146,7 +146,10 @@ jobs:
             exit 0
           fi
           head_committer_email="$(git show -s --format=%ce HEAD)"
-          if [[ "$GITHUB_EVENT_NAME" == "push" && "$head_committer_email" == *"[bot]@users.noreply.github.com" ]]; then
+          head_subject="$(git show -s --format=%s HEAD)"
+          # Release commits are signed by the organization release identity,
+          # not a [bot] account, so the release lane is also recognized by subject.
+          if [[ "$GITHUB_EVENT_NAME" == "push" && ( "$head_committer_email" == *"[bot]@users.noreply.github.com" || "$head_subject" == "[node-release] "* ) ]]; then
             echo "::notice title=Snapshot skipped::Next-dev commit does not need a snapshot."
             echo "should_publish=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -321,6 +324,8 @@ jobs:
       release_type: ${{ inputs.release_type }}
     secrets:
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+      CI_GPG_SECRET_KEY: ${{ secrets.CI_GPG_SECRET_KEY }}
+      CI_GPG_SECRET_KEY_PASSWORD: ${{ secrets.CI_GPG_SECRET_KEY_PASSWORD }}
 
   publish-npm:
     name: Publish ${{ matrix.release.tag }} to npm
@@ -649,6 +654,13 @@ jobs:
           tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
 
+      - name: Configure release git signing
+        uses: InditexTech/gh-actions/configure-release-git@ca5ff3f7d69ee5a3cb026ac5585d680f083d8f7b
+        with:
+          token: ${{ github.token }}
+          gpg-secret-key: ${{ secrets.CI_GPG_SECRET_KEY }}
+          gpg-passphrase: ${{ secrets.CI_GPG_SECRET_KEY_PASSWORD }}
+
       - name: Prepare next development source
         env:
           RELEASES: ${{ needs.release-core.outputs.releases }}
@@ -657,8 +669,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git -C "$SOURCE_ROOT" config user.name "github-actions[bot]"
-          git -C "$SOURCE_ROOT" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           release_bump="$(jq -er '.[0].release_bump | select(type == "string" and length > 0)' <<< "$RELEASES")"
           case "${PACKAGE_MANAGER:-npm}" in
             npm)  RELEASE_BUMP="$release_bump" npm run version:development ;;
