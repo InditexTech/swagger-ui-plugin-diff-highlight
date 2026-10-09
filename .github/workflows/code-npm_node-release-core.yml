@@ -342,7 +342,33 @@ jobs:
           member_dir() {
             printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
           }
+          member_directory() {
+            local mapped
+            if mapped="$(jq -er --arg p "$1" '.[$p]' <<< "$PACKAGE_PATHS" 2>/dev/null)"; then
+              if [[ ! "$mapped" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+                echo "::error title=Invalid release.package_paths::directory for '$1' must be a single lowercase [a-z0-9][a-z0-9._-]* segment under packages/." >&2
+                exit 1
+              fi
+              printf '%s' "$mapped"
+              return
+            fi
+            echo "::notice title=Derived release member::directory for '$1' derived from the package name." >&2
+            member_dir "$1"
+          }
+          load_package_paths() {
+            PACKAGE_PATHS="$(jq -c '.release.package_paths // {}' "$descriptor")"
+          }
           strip_snapshot() { printf '%s' "${1%-SNAPSHOT}"; }
+          require_member() {
+            local dir="."
+            if [[ -n "$1" ]]; then
+              dir="packages/$1"
+            fi
+            if [[ ! -f "$dir/package.json" ]]; then
+              echo "::error title=Release member missing::package.json not found at '$dir'. Check release.package_paths in $descriptor."
+              exit 1
+            fi
+          }
           read_version() {
             if [[ -n "$1" ]]; then
               jq -r '.version' "packages/$1/package.json"
@@ -373,9 +399,10 @@ jobs:
             printf '%s\n' "$(jq -r '.name' package.json)" > "$members_file"
           elif [[ "$PROJECT_TYPE" == "workspaces" ]]; then
             release_strategy="$(jq -er '.release.strategy' "$descriptor")"
+            load_package_paths
             : > "$members_file"
             while IFS= read -r package; do
-              printf '%s\n' "$(member_dir "$package")" >> "$members_file"
+              printf '%s\n' "$(member_directory "$package")" >> "$members_file"
             done < <(jq -er '.release.packages[]' "$descriptor")
           else
             echo "::error title=Invalid project type::PROJECT_TYPE must be single or workspaces."
@@ -386,6 +413,7 @@ jobs:
             : > "$records_file"
             if [[ "$release_strategy" == "single" ]]; then
               package_name="$(<"$members_file")"
+              require_member ""
               version="$(strip_snapshot "$(read_version "")")"
               next_dev="$(bump_semver "$version" "$release_bump")-SNAPSHOT"
               jq -cn \
@@ -402,10 +430,11 @@ jobs:
               while IFS= read -r member; do
                 members+=("$member")
               done < "$members_file"
-              versions=()
-              for member in "${members[@]}"; do
-                versions+=("$(strip_snapshot "$(read_version "$member")")")
-              done
+            versions=()
+            for member in "${members[@]}"; do
+              require_member "$member"
+              versions+=("$(strip_snapshot "$(read_version "$member")")")
+            done
               if [[ "$(printf '%s\n' "${versions[@]}" | sort -u | wc -l | tr -d ' ')" -ne 1 ]]; then
                 echo "::error title=Invalid locked-step reactor::All release members must share the same version."
                 exit 1
@@ -422,16 +451,17 @@ jobs:
               return
             fi
 
-            while IFS= read -r member; do
-              version="$(strip_snapshot "$(read_version "$member")")"
-              next_dev="$(bump_semver "$version" "$release_bump")-SNAPSHOT"
-              jq -cn \
-                --arg member "$member" \
-                --arg version "$version" \
-                --arg tag "${member}-${version}" \
-                --arg next_dev "$next_dev" \
-                '{packages: [$member], version: $version, tag: $tag, next_dev: $next_dev}' >> "$records_file"
-            done < "$members_file"
+          while IFS= read -r member; do
+            require_member "$member"
+            version="$(strip_snapshot "$(read_version "$member")")"
+            next_dev="$(bump_semver "$version" "$release_bump")-SNAPSHOT"
+            jq -cn \
+              --arg member "$member" \
+              --arg version "$version" \
+              --arg tag "${member}-${version}" \
+              --arg next_dev "$next_dev" \
+              '{packages: [$member], version: $version, tag: $tag, next_dev: $next_dev}' >> "$records_file"
+          done < "$members_file"
           }
 
           if [[ "$resume" == "false" ]]; then
@@ -1322,10 +1352,34 @@ jobs:
           member_dir() {
             printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
           }
+          member_directory() {
+            local mapped
+            if mapped="$(jq -er --arg p "$1" '.[$p]' <<< "$PACKAGE_PATHS" 2>/dev/null)"; then
+              if [[ ! "$mapped" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+                echo "::error title=Invalid release.package_paths::directory for '$1' must be a single lowercase [a-z0-9][a-z0-9._-]* segment under packages/." >&2
+                exit 1
+              fi
+              printf '%s' "$mapped"
+              return
+            fi
+            echo "::notice title=Derived release member::directory for '$1' derived from the package name." >&2
+            member_dir "$1"
+          }
+          require_member() {
+            local dir="."
+            if [[ -n "$1" ]]; then
+              dir="packages/$1"
+            fi
+            if [[ ! -f "$dir/package.json" ]]; then
+              echo "::error title=Release member missing::package.json not found at '$dir'. Check release.package_paths in $descriptor."
+              exit 1
+            fi
+          }
 
           if [[ "$(git rev-parse HEAD)" != "$RELEASE_COMMIT" ]]; then
             echo "::notice title=Next-dev skipped::Branch already advanced past the release commit."
           else
+            PACKAGE_PATHS="$(jq -c '.release.package_paths // {}' "$descriptor")"
             {
               if [[ "$PROJECT_TYPE" == "single" ]]; then
                 next_dev="$(jq -r '.[0].next_dev' <<< "$RELEASES")"
@@ -1333,7 +1387,8 @@ jobs:
               elif [[ "$(jq -er '.release.strategy' "$descriptor")" == "locked-step" ]]; then
                 next_dev="$(jq -r '.[0].next_dev' <<< "$RELEASES")"
                 while IFS= read -r package; do
-                  member="$(member_dir "$package")"
+                  member="$(member_directory "$package")"
+                  require_member "$member"
                   npm pkg set "version=$next_dev" --workspace "packages/$member"
                 done < <(jq -er '.release.packages[]' "$descriptor")
               else
