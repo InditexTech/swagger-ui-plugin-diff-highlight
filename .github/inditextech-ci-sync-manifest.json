@@ -1,0 +1,62 @@
+{
+  "configuration": {
+    "branch_roles": {
+      "development_branch": "develop",
+      "release_branch": "main"
+    },
+    "development_flow": "git-flow",
+    "outputs": [
+      "publish"
+    ],
+    "parameters": {
+      "project_type": "single",
+      "publish_snapshot": true,
+      "working_directory": "."
+    }
+  },
+  "creation_year": 2026,
+  "integrity": {
+    "algorithm": "hmac-sha256",
+    "signature": "30da579cb160780970680b47a0265f360eb311100c20e8d0d3948bf03c146577"
+  },
+  "managed_by": "InditexTech CI governance",
+  "managed_paths": {
+    ".github/ISSUE_TEMPLATE/1-bug.yml": "cd4dad3f32fe707e06324790a2fe2c25829c55566de2b459d744e785b36e1205",
+    ".github/ISSUE_TEMPLATE/2-feature.yml": "ebb92730d6c01641d055f97ac094cbe07f88fac24be9b689ddf26e47e7bda863",
+    ".github/ISSUE_TEMPLATE/3-other.yml": "5a839b39a98704036210dee498146f51bd5a6c057228685680e02004ff063a9a",
+    ".github/ISSUE_TEMPLATE/config.yml": "10e5dee4d49aa9e7792ceb4c986160c61f95da1ba00a64bf06e5f1f636cd17ec",
+    ".github/PULL_REQUEST_TEMPLATE.md": "23a0b0ac79a9020ccac9c013582a01f86e2df2ae7f914673583b9a3368313041",
+    ".github/inditextech-ci-node.json": "72449d1243d714b1ef9bd615e6dc67d0ec0b25f0c73440a08fa34d1e498864ac",
+    ".github/workflows/code-npm_node-PR_verify.yml": "2d4430d765f4a7539ae64fc75cb8254cc09fdcaa7a2a805faada3865887262ce",
+    ".github/workflows/code-npm_node-publish-release-and-snapshot.yml": "b8743248b8882fc5c3de16acc455c9660fde8bcf686784f0a21e7989cb66ccf7",
+    ".github/workflows/code-npm_node-release-core.yml": "4d049809fb1d88f41b15c28cbe62b164dfe1be297ab6d7db38a685e9f693bcaa",
+    ".github/workflows/code-npm_node-sonarcloud-analysis.yml": "e86284867ae0bb193af66233d87f3f78ea7e7a0c9d33bd0e80432486245bf12b",
+    ".github/workflows/code-release_preview.yml": "4e2e95d60a498eb12d97ba5c8330b1173f04b02c807140beddad06a6e225b166",
+    ".github/workflows/codeql.yml": "3deedabd1c2469f05588157631078d85528e538e094f3e603e26c04894303d38",
+    ".github/workflows/pr-verify.yml": "5628d1d93c09cb761602fcfc3857c325e2dc542cadc159a1edad58d1818d0de0",
+    ".github/workflows/push-verify.yml": "643f6905fa30284af4a2eabac752293b2e785a5e82449bb6d97950624386829c",
+    ".github/workflows/scorecard-analysis.yml": "b45c2a0f87801796cefb4363d9f1414891b0734bc07de3f50d4a880e22faea10",
+    ".github/workflows/sync-to-develop.yml": "2f80696aeb3aa35a47944535539ca1887a8cea0cf11dd62e1a103497aa395acc",
+    ".tool-versions": "5e7b05edf5d8df174df5dd99d012e57666ec9923ac8506df7dc7753ba41815fd",
+    "CODE_OF_CONDUCT.md": "ce1e7a8f68a7917d48c03f9f7aae5529367f73af0e959276e889d33ea1e8d4ab",
+    "CONTRIBUTING.md": "4e1264ca54a45df44b362c7533f0eba912bfa77b6f561121ae9e5e9d6aa00df3",
+    "SECURITY.md": "0ee7a3356bc3a1c7649e3b7a6a9012b0608011be2b1ff8d106ad02c8950bab25",
+    "repolinter.json": "0efb305c47a63f03c488a34906fc2d5471c84145c2ff553f2aacf3a41b92e1a1"
+  },
+  "managed_variables": {
+    "DEVELOPMENT_FLOW": "git-flow",
+    "GIT_FLOW_DEVELOPMENT_BRANCH": "develop",
+    "GIT_FLOW_RELEASE_BRANCH": "main",
+    "PROJECT_TYPE": "single",
+    "PUBLISH_SNAPSHOT": "true",
+    "WORKING_DIRECTORY": "."
+  },
+  "profile": "node",
+  "repository_id": 1291909277,
+  "retained_paths": {},
+  "schema_version": 2,
+  "source_digests": {
+    "base": "d0ba4f054c8e0a0d6c828d02718efc01251f7897cfcbe864d3c76ef304dc4a13",
+    "node": "f96646bb1913b7965d0e5def0800aa90b68e36ce89487f555f6e9a0d1162119b"
+  }
+}
