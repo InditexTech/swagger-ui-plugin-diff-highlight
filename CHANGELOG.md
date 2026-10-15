@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-15
+
 ### Security
 
 - Bumped `swagger-ui-react` to `^5.32.14` (root and `example/`), which transitively resolves:
@@ -38,5 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial OSS repository shell.
 - Original code, including the diff highlighting plugin, and the example React application.
 
-[Unreleased]: https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/compare/0.1.0...HEAD
+[Unreleased]: https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/compare/0.2.0...HEAD
+
+[0.2.0]: https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/compare/0.1.0...0.2.0
+
 [0.1.0]: https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/releases/tag/0.1.0
