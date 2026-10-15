@@ -43,6 +43,69 @@ describe("wrapComponents.Model", () => {
     );
   });
 
+  it.each([
+    {
+      change: "added",
+      before: ["des", "pre", "pro", "stage"],
+      after: ["des", "pre", "pro", "stage", "test"],
+      deleted: [],
+      added: ['"test"'],
+    },
+    {
+      change: "removed",
+      before: ["des", "pre", "pro", "stage", "test"],
+      after: ["des", "pre", "pro", "stage"],
+      deleted: ['"test"'],
+      added: [],
+    },
+    {
+      change: "replaced",
+      before: ["des", "pre", "pro", "stage", "test"],
+      after: ["des", "pre", "pro", "stage", "qa"],
+      deleted: ['"test"'],
+      added: ['"qa"'],
+    },
+  ])(
+    "shows $change EnvironmentEnum values without an unchanged type comparison",
+    ({ before, after, deleted, added }) => {
+      const schema = fromJS({
+        title: "EnvironmentEnum",
+        type: "string",
+        enum: after,
+        "x-diff-status": "updated",
+        "x-diff-original": {
+          title: "EnvironmentEnum",
+          type: "string",
+          enum: before,
+        },
+        "x-diff-new": {
+          title: "EnvironmentEnum",
+          type: "string",
+          enum: after,
+        },
+      });
+      const { container, getByText } = render(<Wrapped schema={schema} />);
+
+      expect(
+        [...container.querySelectorAll(".diff-deleted")].map(
+          (element) => element.textContent
+        )
+      ).toEqual(deleted);
+      expect(
+        [...container.querySelectorAll(".diff-added")].map(
+          (element) => element.textContent
+        )
+      ).toEqual(added);
+      for (const value of ['"des"', '"pre"', '"pro"', '"stage"']) {
+        expect(
+          getByText(value, { exact: true }).closest(".diff-deleted, .diff-added")
+        ).toBeNull();
+      }
+      expect(container.querySelector(".diff-updated-arrow")).toBeNull();
+      expect(container.textContent).not.toContain("string → string");
+    }
+  );
+
   it("renders the original component untouched when there is no status", () => {
     const { container } = render(
       <Wrapped schema={fromJS({ type: "string" })} />
