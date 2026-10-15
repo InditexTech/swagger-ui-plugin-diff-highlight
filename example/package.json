@@ -14,6 +14,9 @@
     "@vitejs/plugin-react": "^4.3.4",
     "vite": "^6.0.7"
   },
+  "overrides": {
+    "js-yaml": "^4.3.2"
+  },
   "scripts": {
     "start": "vite",
     "build": "vite build",

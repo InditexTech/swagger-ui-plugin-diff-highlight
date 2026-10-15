@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated transitive `postcss` to `>=8.5.23`, fixing an incomplete `sourceMappingURL` path-traversal fix (CVE-2026-69153)
 - Updated transitive `undici` to `>=7.29.0`, fixing several request/response handling issues
 
+### Changed
+
+- Added a `verify` npm script (`lint`, `format:check`, `test`, `build`) used by the governed CI verify workflows.
+- Updated governance CI: issue/PR templates, `REUSE.toml`, `repolinter.json`, `.prettierignore`, `.sync-exclude`, and the governed workflow set.
+- Updated `vitest` to `^5.0.1` and refreshed lockfiles.
+
 ## [0.1.0] - 2026-07-20
 
 ### Added
