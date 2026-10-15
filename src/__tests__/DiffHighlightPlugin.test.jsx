@@ -98,7 +98,9 @@ describe("wrapComponents.Model", () => {
       ).toEqual(added);
       for (const value of ['"des"', '"pre"', '"pro"', '"stage"']) {
         expect(
-          getByText(value, { exact: true }).closest(".diff-deleted, .diff-added")
+          getByText(value, { exact: true }).closest(
+            ".diff-deleted, .diff-added"
+          )
         ).toBeNull();
       }
       expect(container.querySelector(".diff-updated-arrow")).toBeNull();
@@ -112,6 +114,102 @@ describe("wrapComponents.Model", () => {
     );
     expect(container.querySelector('[class^="diff-"]')).toBeNull();
     expect(container.textContent).toBe("original");
+  });
+
+  it.each([
+    {
+      change: "adding an enum restriction",
+      before: { type: "string" },
+      after: { type: "string", enum: ["test"] },
+      deleted: ["unrestricted"],
+      added: ['"test"'],
+      neutral: [],
+    },
+    {
+      change: "removing an enum restriction",
+      before: { type: "string", enum: ["test"] },
+      after: { type: "string" },
+      deleted: ['"test"'],
+      added: ["unrestricted"],
+      neutral: [],
+    },
+    {
+      change: "unchanged enum and type",
+      before: { type: "string", enum: ["test"] },
+      after: { type: "string", enum: ["test"] },
+      deleted: [],
+      added: [],
+      neutral: ['"test"'],
+    },
+    {
+      change: "distinct JSON scalar values",
+      before: { enum: [1, false, null] },
+      after: { enum: ["1", false, null] },
+      deleted: ["1"],
+      added: ['"1"'],
+      neutral: ["false", "null"],
+    },
+    {
+      change: "structurally equal JSON values",
+      before: { enum: [{ a: 1, b: 2 }, ["test", null]] },
+      after: { enum: [{ b: 2, a: 1 }, ["test", null], { a: 2 }] },
+      deleted: [],
+      added: ['{"a":2}'],
+      neutral: ['{"a":1,"b":2}', '["test",null]'],
+    },
+    {
+      change: "type and format changes alongside enum changes",
+      before: { type: "string", enum: ["1"] },
+      after: { type: "integer", format: "int64", enum: [1] },
+      deleted: ['"1"'],
+      added: ["1"],
+      neutral: [],
+      types: ["string", "integer($int64)"],
+    },
+    {
+      change: "format changes alongside unchanged enums",
+      before: { type: "string", format: "date", enum: ["test"] },
+      after: { type: "string", format: "date-time", enum: ["test"] },
+      deleted: [],
+      added: [],
+      neutral: ['"test"'],
+      types: ["string($date)", "string($date-time)"],
+    },
+  ])("handles $change", ({ before, after, deleted, added, neutral, types }) => {
+    const schema = fromJS({
+      ...after,
+      "x-diff-status": "updated",
+      "x-diff-original": before,
+      "x-diff-new": after,
+    });
+    const { container, getByText } = render(<Wrapped schema={schema} />);
+
+    expect(
+      [...container.querySelectorAll(".diff-deleted")].map(
+        (element) => element.textContent
+      )
+    ).toEqual(deleted);
+    expect(
+      [...container.querySelectorAll(".diff-added")].map(
+        (element) => element.textContent
+      )
+    ).toEqual(added);
+    for (const value of neutral) {
+      expect(
+        getByText(value, { exact: true }).closest(".diff-deleted, .diff-added")
+      ).toBeNull();
+    }
+    if (types) {
+      expect(container.querySelector(".diff-updated-old").textContent).toBe(
+        types[0]
+      );
+      expect(container.querySelector(".diff-updated-new").textContent).toBe(
+        types[1]
+      );
+      expect(container.querySelector(".diff-updated-arrow")).not.toBeNull();
+    } else {
+      expect(container.querySelector(".diff-updated-arrow")).toBeNull();
+    }
   });
 });
 

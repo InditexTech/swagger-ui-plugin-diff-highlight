@@ -94,11 +94,58 @@ const DiffHighlightPlugin = () => ({
       if (status === "updated") {
         const original = props.schema.get("x-diff-original");
         const updated = props.schema.get("x-diff-new");
+        const originalType = describeSchema(original);
+        const updatedType = describeSchema(updated);
+        const originalEnum = original?.get("enum");
+        const updatedEnum = updated?.get("enum");
+        const enumValues = (originalEnum?.toArray() || []).concat(
+          updatedEnum
+            ?.filter((value) => !originalEnum?.includes(value))
+            .toArray() || []
+        );
         return (
           <span className="diff-updated-inline">
-            <span className="diff-updated-old">{describeSchema(original)}</span>
-            <span className="diff-updated-arrow"> → </span>
-            <span className="diff-updated-new">{describeSchema(updated)}</span>
+            {originalType === updatedType ? (
+              updatedType
+            ) : (
+              <>
+                <span className="diff-updated-old">{originalType}</span>
+                <span className="diff-updated-arrow"> → </span>
+                <span className="diff-updated-new">{updatedType}</span>
+              </>
+            )}
+            {(originalEnum || updatedEnum) && (
+              <span>
+                {" Enum: "}
+                {!originalEnum && (
+                  <span className="diff-deleted">unrestricted</span>
+                )}
+                {" [ "}
+                {enumValues.map((value, index) => (
+                  <React.Fragment key={index}>
+                    {index > 0 && ", "}
+                    <span
+                      className={
+                        !originalEnum?.includes(value)
+                          ? "diff-added"
+                          : !updatedEnum?.includes(value)
+                            ? "diff-deleted"
+                            : undefined
+                      }
+                    >
+                      {JSON.stringify(value)}
+                    </span>
+                  </React.Fragment>
+                ))}
+                {" ]"}
+                {!updatedEnum && (
+                  <>
+                    {" "}
+                    <span className="diff-added">unrestricted</span>
+                  </>
+                )}
+              </span>
+            )}
           </span>
         );
       }
