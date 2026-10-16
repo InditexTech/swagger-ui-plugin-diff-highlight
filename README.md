@@ -243,7 +243,7 @@ The plugin uses Swagger UI's [`wrapComponents`](https://swagger-ui.github.io/swa
 Three implementation details worth knowing:
 
 - **Operations are read from the unresolved spec.** Swagger UI resolves an operation's subtree _lazily_, only once it is expanded. The plugin reads `x-diff-status` straight from `specSelectors.specJson()` using the `specPath`, so the mark is visible whether the operation is **collapsed or expanded**.
-- **Schema accordions show where changes hide.** A schema accordion whose subtree contains an added, deleted, or updated schema (following nested properties, items, compositions, and `$ref`s) gets the `diff-ancestor` class. Its header shows an ochre bar whether it is collapsed or expanded. Leaf colors still win inside the header.
+- **Schema accordions show where changes hide.** A schema accordion whose subtree contains an added, deleted, or updated schema (following nested properties, items, compositions, and `$ref`s) gets the `diff-ancestor` class. Its header text turns ochre whether it is collapsed or expanded. For a nested schema, the property name turns ochre too. Leaf colors still win inside the header.
 - **Table layout is preserved.** Rows (`<tr>`) must stay direct children of their table, so the plugin wraps them in a `display: contents` element to apply the diff class without breaking the table flow.
 
 ### Notes / caveats

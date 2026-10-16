@@ -65,15 +65,16 @@
 /* Schema accordion segments hiding a change: mark only the header button so
  * the expanded body stays unpainted. Color is not !important so the added /
  * deleted leaf rules above still win inside the header. */
-.swagger-ui .diff-ancestor > .model-box-control {
-  box-shadow: inset 3px 0 0 #b9770e;
-  /* Root headers are full-width; keep the padding inside that width. */
-  box-sizing: border-box;
-  padding-left: 6px;
-}
-
 .swagger-ui .diff-ancestor > .model-box-control,
 .swagger-ui .diff-ancestor > .model-box-control * {
+  color: #b9770e;
+}
+
+/* A nested schema's accordion has no title, so also mark the property name
+ * cell of the row whose value is that accordion. */
+.swagger-ui
+  tr.property-row:has(> td > .model > .diff-ancestor)
+  > td:first-child {
   color: #b9770e;
 }
 
