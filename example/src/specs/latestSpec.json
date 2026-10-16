@@ -104,6 +104,11 @@
   },
   "components": {
     "schemas": {
+      "EnvironmentEnum": {
+        "title": "EnvironmentEnum",
+        "type": "string",
+        "enum": ["des", "pre", "pro", "staging", "test"]
+      },
       "User": {
         "type": "object",
         "properties": {

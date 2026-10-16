@@ -1,6 +1,19 @@
 // SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
 // SPDX-License-Identifier: Apache-2.0
-import React from "react";
+import React, { createContext, useContext } from "react";
+
+const EnumDiffContext = createContext(null);
+
+const enumValueKey = (value) =>
+  JSON.stringify(value, (_, item) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(
+          Object.keys(item)
+            .sort()
+            .map((key) => [key, item[key]])
+        )
+      : item
+  );
 
 /**
  * Wraps a swagger-ui component's output without breaking table layout.
@@ -74,9 +87,38 @@ const DiffHighlightPlugin = () => ({
      */
     Model: (Original) => (props) => {
       const status = readStatus(props.schema);
+      const original = props.schema?.get("x-diff-original");
+      const updated = props.schema?.get("x-diff-new");
+      const originalEnum = original?.get("enum");
+      const updatedEnum = updated?.get("enum");
+      if (status === "updated" && (originalEnum || updatedEnum)) {
+        const type = props.schema.get("type") || "object";
+        const supplemental = type === "object" || type === "array";
+        const schema = supplemental
+          ? props.schema
+              .remove("enum")
+              .remove("x-diff-status")
+              .remove("x-diff-original")
+              .remove("x-diff-new")
+          : props.schema.set("enum", updatedEnum || originalEnum);
+        return (
+          <EnumDiffContext.Provider
+            value={{
+              original,
+              updated,
+              supplemental,
+              getComponent: props.getComponent,
+            }}
+          >
+            <Original {...props} schema={schema} />
+          </EnumDiffContext.Provider>
+        );
+      }
+
+      let content = <Original {...props} />;
 
       if (status === "deleted") {
-        return (
+        content = (
           <span className="diff-deleted">
             <Original {...props} />
           </span>
@@ -84,7 +126,7 @@ const DiffHighlightPlugin = () => ({
       }
 
       if (status === "added") {
-        return (
+        content = (
           <span className="diff-added">
             <Original {...props} />
           </span>
@@ -92,18 +134,9 @@ const DiffHighlightPlugin = () => ({
       }
 
       if (status === "updated") {
-        const original = props.schema.get("x-diff-original");
-        const updated = props.schema.get("x-diff-new");
         const originalType = describeSchema(original);
         const updatedType = describeSchema(updated);
-        const originalEnum = original?.get("enum");
-        const updatedEnum = updated?.get("enum");
-        const enumValues = (originalEnum?.toArray() || []).concat(
-          updatedEnum
-            ?.filter((value) => !originalEnum?.includes(value))
-            .toArray() || []
-        );
-        return (
+        content = (
           <span className="diff-updated-inline">
             {originalType === updatedType ? (
               updatedType
@@ -114,44 +147,104 @@ const DiffHighlightPlugin = () => ({
                 <span className="diff-updated-new">{updatedType}</span>
               </>
             )}
-            {(originalEnum || updatedEnum) && (
-              <span>
-                {" Enum: "}
-                {!originalEnum && (
-                  <span className="diff-deleted">unrestricted</span>
-                )}
-                {" [ "}
-                {enumValues.map((value, index) => (
-                  <React.Fragment key={index}>
-                    {index > 0 && ", "}
-                    <span
-                      className={
-                        !originalEnum?.includes(value)
-                          ? "diff-added"
-                          : !updatedEnum?.includes(value)
-                            ? "diff-deleted"
-                            : undefined
-                      }
-                    >
-                      {JSON.stringify(value)}
-                    </span>
-                  </React.Fragment>
-                ))}
-                {" ]"}
-                {!updatedEnum && (
-                  <>
-                    {" "}
-                    <span className="diff-added">unrestricted</span>
-                  </>
-                )}
-              </span>
-            )}
           </span>
         );
       }
 
-      return <Original {...props} />;
+      return (
+        <EnumDiffContext.Provider value={null}>
+          {content}
+        </EnumDiffContext.Provider>
+      );
     },
+
+    ModelCollapse: (Original) =>
+      function ModelCollapse(props) {
+        const diff = useContext(EnumDiffContext);
+        if (!diff?.supplemental) return <Original {...props} />;
+        const EnumModel = diff.getComponent("EnumModel");
+        return (
+          <EnumDiffContext.Provider value={null}>
+            <Original {...props}>
+              {props.children}
+              <EnumDiffContext.Provider
+                value={{ ...diff, supplemental: false }}
+              >
+                <EnumModel getComponent={diff.getComponent} />
+              </EnumDiffContext.Provider>
+            </Original>
+          </EnumDiffContext.Provider>
+        );
+      },
+
+    EnumModel: (Original) =>
+      function EnumModel(props) {
+        const diff = useContext(EnumDiffContext);
+        if (!diff) return <Original {...props} />;
+
+        const originalEnum = diff.original?.get("enum")?.toJS();
+        const updatedEnum = diff.updated?.get("enum")?.toJS();
+        const originalKeys = new Set(originalEnum?.map(enumValueKey));
+        const updatedKeys = new Set(updatedEnum?.map(enumValueKey));
+        const values = (originalEnum || []).concat(
+          updatedEnum?.filter(
+            (value) => !originalKeys.has(enumValueKey(value))
+          ) || []
+        );
+        const originalType = describeSchema(diff.original);
+        const updatedType = describeSchema(diff.updated);
+        const ModelCollapse = props.getComponent("ModelCollapse");
+        return (
+          <span className="prop-enum">
+            <br />
+            {originalType !== updatedType && (
+              <div className="diff-type-change">
+                Type:{" "}
+                <span className="diff-updated-inline">
+                  <span className="diff-updated-old">{originalType}</span>
+                  <span className="diff-updated-arrow"> → </span>
+                  <span className="diff-updated-new">{updatedType}</span>
+                </span>
+              </div>
+            )}
+            Enum:
+            <br />
+            <ModelCollapse
+              collapsedContent={<span>Array [ {values.length} ]</span>}
+            >
+              {!originalEnum && (
+                <>
+                  <span className="diff-deleted">unrestricted</span>{" "}
+                </>
+              )}
+              {"[ "}
+              {values.map((value, index) => (
+                <React.Fragment key={index}>
+                  {index > 0 && ", "}
+                  <span
+                    className={
+                      !originalKeys.has(enumValueKey(value))
+                        ? "diff-added"
+                        : !updatedKeys.has(enumValueKey(value))
+                          ? "diff-deleted"
+                          : undefined
+                    }
+                  >
+                    {typeof value === "string" ? value : JSON.stringify(value)}
+                  </span>
+                </React.Fragment>
+              ))}
+              {" ]"}
+              {!updatedEnum && (
+                <>
+                  {" "}
+                  <span className="diff-added">unrestricted</span>
+                </>
+              )}
+            </ModelCollapse>
+          </span>
+        );
+      },
 
     /**
      * Parameters: one `<tr>` per parameter; status lives on the param object.
