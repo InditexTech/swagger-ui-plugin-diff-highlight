@@ -62,6 +62,21 @@
   font-weight: 700 !important;
 }
 
+/* Schema accordion segments hiding a change: mark only the header button so
+ * the expanded body stays unpainted. Color is not !important so the added /
+ * deleted leaf rules above still win inside the header. */
+.swagger-ui .diff-ancestor > .model-box-control {
+  box-shadow: inset 3px 0 0 #b9770e;
+  /* Root headers are full-width; keep the padding inside that width. */
+  box-sizing: border-box;
+  padding-left: 6px;
+}
+
+.swagger-ui .diff-ancestor > .model-box-control,
+.swagger-ui .diff-ancestor > .model-box-control * {
+  color: #b9770e;
+}
+
 /* Operation-level changes: tag the whole opblock but only paint the
  * always-visible summary row, so the mark is shown whether the operation is
  * collapsed or expanded. */
