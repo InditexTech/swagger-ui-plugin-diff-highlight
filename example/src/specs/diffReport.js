@@ -67,18 +67,6 @@ const changesReport = {
         { change: "added", label: '"preferences.language"', detail: "string" },
       ],
     },
-    {
-      title: "RoleEnum · Values used by User.role",
-      entries: [
-        { change: "removed", label: '"guest"', detail: "enum value" },
-        {
-          change: "changed",
-          label: '"editor"',
-          detail: "value: editor → contributor",
-        },
-        { change: "added", label: '"auditor"', detail: "enum value" },
-      ],
-    },
   ],
 };
 

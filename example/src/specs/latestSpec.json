@@ -104,15 +104,9 @@
   },
   "components": {
     "schemas": {
-      "RoleEnum": {
-        "title": "RoleEnum",
-        "type": "string",
-        "enum": ["admin", "member", "contributor", "auditor"]
-      },
       "User": {
         "type": "object",
         "properties": {
-          "role": { "$ref": "#/components/schemas/RoleEnum" },
           "username": { "type": "string" },
           "email": { "type": "string", "format": "email" },
           "timeout": { "type": "integer" },
