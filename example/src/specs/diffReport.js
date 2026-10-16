@@ -66,6 +66,26 @@ const changesReport = {
         },
       ],
     },
+    {
+      title: "RoleEnum · Values used by User.role",
+      entries: [
+        {
+          change: "removed",
+          label: '"guest"',
+          detail: "No longer an allowed role.",
+        },
+        {
+          change: "changed",
+          label: '"editor" → "contributor"',
+          detail: "Role value renamed.",
+        },
+        {
+          change: "added",
+          label: '"auditor"',
+          detail: "New allowed role.",
+        },
+      ],
+    },
   ],
 };
 
