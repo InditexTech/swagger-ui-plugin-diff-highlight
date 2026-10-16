@@ -139,25 +139,26 @@
   },
   "components": {
     "schemas": {
-      "EnvironmentEnum": {
-        "title": "EnvironmentEnum",
+      "RoleEnum": {
+        "title": "RoleEnum",
         "type": "string",
-        "enum": ["des", "pre", "pro", "staging", "test"],
+        "enum": ["admin", "member", "contributor", "auditor"],
         "x-diff-status": "updated",
         "x-diff-original": {
-          "title": "EnvironmentEnum",
+          "title": "RoleEnum",
           "type": "string",
-          "enum": ["des", "pre", "pro", "stage", "legacy"]
+          "enum": ["admin", "member", "editor", "guest"]
         },
         "x-diff-new": {
-          "title": "EnvironmentEnum",
+          "title": "RoleEnum",
           "type": "string",
-          "enum": ["des", "pre", "pro", "staging", "test"]
+          "enum": ["admin", "member", "contributor", "auditor"]
         }
       },
       "User": {
         "type": "object",
         "properties": {
+          "role": { "$ref": "#/components/schemas/RoleEnum" },
           "username": {
             "type": "string",
             "x-diff-status": "unchanged"

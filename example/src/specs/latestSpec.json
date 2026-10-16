@@ -104,14 +104,15 @@
   },
   "components": {
     "schemas": {
-      "EnvironmentEnum": {
-        "title": "EnvironmentEnum",
+      "RoleEnum": {
+        "title": "RoleEnum",
         "type": "string",
-        "enum": ["des", "pre", "pro", "staging", "test"]
+        "enum": ["admin", "member", "contributor", "auditor"]
       },
       "User": {
         "type": "object",
         "properties": {
+          "role": { "$ref": "#/components/schemas/RoleEnum" },
           "username": { "type": "string" },
           "email": { "type": "string", "format": "email" },
           "timeout": { "type": "integer" }
