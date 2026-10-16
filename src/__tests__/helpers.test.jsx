@@ -5,6 +5,7 @@ import { fromJS } from "immutable";
 import { describe, expect, it } from "vitest";
 
 import {
+  containsChange,
   describeSchema,
   readStatus,
   wrapContents,
@@ -61,5 +62,95 @@ describe("wrapContents", () => {
     expect(wrapper).toHaveClass("diff-added");
     expect(wrapper).toHaveStyle({ display: "contents" });
     expect(getByText("child")).toBeInTheDocument();
+  });
+});
+
+describe("containsChange", () => {
+  const schemas = fromJS({
+    RoleEnum: { type: "string", "x-diff-status": "updated" },
+    Plain: { type: "object", properties: { id: { type: "string" } } },
+    Node: {
+      type: "object",
+      properties: {
+        children: { type: "array", items: { $ref: "#/schemas/Node" } },
+      },
+    },
+  });
+  const resolveRef = (ref) => schemas.get(ref.replace("#/schemas/", ""));
+
+  it("finds a change in a nested property", () => {
+    const schema = fromJS({
+      type: "object",
+      properties: {
+        preferences: {
+          type: "object",
+          properties: {
+            language: { type: "string", "x-diff-status": "added" },
+          },
+        },
+      },
+    });
+    expect(containsChange(schema)).toBe(true);
+  });
+
+  it.each([
+    ["items", { items: { "x-diff-status": "deleted" } }],
+    [
+      "additionalProperties",
+      { additionalProperties: { "x-diff-status": "added" } },
+    ],
+    ["allOf", { allOf: [{ type: "object" }, { "x-diff-status": "added" }] }],
+    ["oneOf", { oneOf: [{ "x-diff-status": "updated" }] }],
+    ["anyOf", { anyOf: [{ "x-diff-status": "deleted" }] }],
+    ["not", { not: { "x-diff-status": "added" } }],
+  ])("finds a change through %s", (_, schema) => {
+    expect(containsChange(fromJS(schema))).toBe(true);
+  });
+
+  it("follows a $ref to a changed schema", () => {
+    const schema = fromJS({
+      type: "object",
+      properties: { role: { $ref: "#/schemas/RoleEnum" } },
+    });
+    expect(containsChange(schema, resolveRef)).toBe(true);
+  });
+
+  it("terminates on a cyclic $ref without a change", () => {
+    expect(containsChange(resolveRef("#/schemas/Node"), resolveRef)).toBe(
+      false
+    );
+  });
+
+  it("returns false when nothing below changed", () => {
+    const schema = fromJS({
+      type: "object",
+      properties: {
+        id: { type: "string", "x-diff-status": "unchanged" },
+        plain: { $ref: "#/schemas/Plain" },
+      },
+      additionalProperties: true,
+    });
+    expect(containsChange(schema, resolveRef)).toBe(false);
+  });
+
+  it("ignores changes inside the x-diff-original / x-diff-new snapshots", () => {
+    const schema = fromJS({
+      type: "object",
+      properties: { id: { type: "string" } },
+      "x-diff-original": {
+        properties: { gone: { "x-diff-status": "deleted" } },
+      },
+      "x-diff-new": { properties: { fresh: { "x-diff-status": "added" } } },
+    });
+    expect(containsChange(schema)).toBe(false);
+  });
+
+  it("treats an updated schema as containing its own change", () => {
+    expect(containsChange(fromJS({ "x-diff-status": "updated" }))).toBe(true);
+  });
+
+  it("does not mark an added or deleted leaf as an ancestor", () => {
+    expect(containsChange(fromJS({ "x-diff-status": "added" }))).toBe(false);
+    expect(containsChange(fromJS({ "x-diff-status": "deleted" }))).toBe(false);
   });
 });
