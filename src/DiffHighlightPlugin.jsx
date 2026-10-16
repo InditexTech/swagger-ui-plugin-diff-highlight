@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
 // SPDX-License-Identifier: Apache-2.0
-import React from "react";
+import React, { useContext } from "react";
 
 /**
  * Wraps a swagger-ui component's output without breaking table layout.
@@ -35,6 +35,96 @@ export const readStatus = (immutableMap) =>
   immutableMap && typeof immutableMap.get === "function"
     ? immutableMap.get("x-diff-status")
     : undefined;
+
+const CHANGED_STATUSES = new Set(["added", "deleted", "updated"]);
+
+const isMapLike = (value) => value != null && typeof value.get === "function";
+
+const valuesOf = (collection) =>
+  collection && typeof collection.valueSeq === "function"
+    ? collection.valueSeq().toArray()
+    : [];
+
+const childSchemas = (schema) => [
+  ...valuesOf(schema.get("properties")),
+  schema.get("items"),
+  schema.get("additionalProperties"),
+  ...valuesOf(schema.get("allOf")),
+  ...valuesOf(schema.get("anyOf")),
+  ...valuesOf(schema.get("oneOf")),
+  schema.get("not"),
+];
+
+/**
+ * Reports whether a schema accordion would hide a change: the schema itself is
+ * updated, or a nested schema (through properties, items, additionalProperties,
+ * allOf / anyOf / oneOf / not, following `$ref`s) is added, deleted or updated.
+ *
+ * `x-diff-original` / `x-diff-new` are never visited, so the snapshots of an
+ * updated schema cannot mark an ancestor on their own.
+ *
+ * @param {object} schema - The schema (Immutable Map), raw or resolved.
+ * @param {(ref: string) => object|undefined} [resolveRef] - Resolves a `$ref`
+ * string to its target schema.
+ * @returns {boolean} `true` when the schema contains a change.
+ */
+export const containsChange = (schema, resolveRef = () => undefined) => {
+  const seenRefs = new Set();
+
+  const deref = (node) => {
+    const ref = isMapLike(node) ? node.get("$ref") : undefined;
+    if (typeof ref !== "string") {
+      return node;
+    }
+    if (seenRefs.has(ref)) {
+      return undefined;
+    }
+    seenRefs.add(ref);
+    return resolveRef(ref);
+  };
+
+  const hasChangedDescendant = (node) =>
+    childSchemas(node).some((child) => {
+      const target = deref(child);
+      if (!isMapLike(target)) {
+        return false;
+      }
+      return (
+        CHANGED_STATUSES.has(readStatus(target)) || hasChangedDescendant(target)
+      );
+    });
+
+  const root = deref(schema);
+  if (!isMapLike(root)) {
+    return false;
+  }
+  return readStatus(root) === "updated" || hasChangedDescendant(root);
+};
+
+/**
+ * Builds a resolver for local `$ref`s ("#/components/schemas/User") against
+ * the loaded spec.
+ *
+ * @param {object} specJson - The raw spec (Immutable Map).
+ * @returns {(ref: string) => object|undefined} The ref resolver.
+ */
+const localRefResolver = (specJson) => (ref) =>
+  ref.startsWith("#/") && isMapLike(specJson)
+    ? specJson.getIn(
+        ref
+          .slice(2)
+          .split("/")
+          .map((token) => token.replace(/~1/g, "/").replace(/~0/g, "~"))
+      )
+    : undefined;
+
+const specJsonOf = (system) => system?.specSelectors?.specJson?.();
+
+/**
+ * Whether the nearest enclosing `Model` contains a change. `undefined` means
+ * the consumer is not rendered inside a `Model`.
+ */
+const ContainsChangeContext = React.createContext(undefined);
 
 /**
  * Describes a schema as a compact human-readable type string.
@@ -72,39 +162,70 @@ const DiffHighlightPlugin = () => ({
     /**
      * Schema properties: each property value is rendered as a nested `<Model>`.
      */
-    Model: (Original) => (props) => {
-      const status = readStatus(props.schema);
+    Model: (Original, system) =>
+      function DiffModel(props) {
+        const status = readStatus(props.schema);
 
-      if (status === "deleted") {
-        return (
-          <span className="diff-deleted">
+        if (status === "updated") {
+          const original = props.schema.get("x-diff-original");
+          const updated = props.schema.get("x-diff-new");
+          return (
+            <span className="diff-updated-inline">
+              <span className="diff-updated-old">
+                {describeSchema(original)}
+              </span>
+              <span className="diff-updated-arrow"> → </span>
+              <span className="diff-updated-new">
+                {describeSchema(updated)}
+              </span>
+            </span>
+          );
+        }
+
+        const marked = containsChange(
+          props.schema,
+          localRefResolver(specJsonOf(system))
+        );
+        const model = (
+          <ContainsChangeContext.Provider value={marked}>
             <Original {...props} />
-          </span>
+          </ContainsChangeContext.Provider>
         );
-      }
 
-      if (status === "added") {
-        return (
-          <span className="diff-added">
-            <Original {...props} />
-          </span>
-        );
-      }
+        if (status === "deleted" || status === "added") {
+          return <span className={`diff-${status}`}>{model}</span>;
+        }
+        return model;
+      },
 
-      if (status === "updated") {
-        const original = props.schema.get("x-diff-original");
-        const updated = props.schema.get("x-diff-new");
-        return (
-          <span className="diff-updated-inline">
-            <span className="diff-updated-old">{describeSchema(original)}</span>
-            <span className="diff-updated-arrow"> → </span>
-            <span className="diff-updated-new">{describeSchema(updated)}</span>
-          </span>
-        );
-      }
+    /**
+     * Schema accordions: tag every segment whose subtree hides a change so its
+     * header can be marked while collapsed. Inside a `Model` the nearest
+     * Model's answer applies; the Schemas section's root accordions render
+     * outside any Model and before their subtree is resolved, so they read
+     * the raw spec at their `specPath`.
+     */
+    ModelCollapse: (Original, system) =>
+      function DiffModelCollapse(props) {
+        const fromModel = useContext(ContainsChangeContext);
+        const specJson = specJsonOf(system);
+        const marked =
+          fromModel ??
+          (props.specPath?.size > 0 &&
+            isMapLike(specJson) &&
+            containsChange(
+              specJson.getIn(props.specPath),
+              localRefResolver(specJson)
+            ));
 
-      return <Original {...props} />;
-    },
+        if (!marked) {
+          return <Original {...props} />;
+        }
+        const classes = [props.classes, "diff-ancestor"]
+          .filter(Boolean)
+          .join(" ");
+        return <Original {...props} classes={classes} />;
+      },
 
     /**
      * Parameters: one `<tr>` per parameter; status lives on the param object.
