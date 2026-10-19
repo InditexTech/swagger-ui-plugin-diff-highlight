@@ -235,7 +235,7 @@ jobs:
       - name: Create GitHub App token
         id: app-token
         if: vars.RELEASE_LIFECYCLE != 'delegated'
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ vars.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -616,7 +616,7 @@ jobs:
           fi
 
       - name: Configure release git signing
-        uses: InditexTech/gh-actions/configure-release-git@3dac9bbff47d1e983604671191a08e4d345d9064
+        uses: InditexTech/gh-actions/configure-release-git@ab7978dfa118776238a6982e445707a1ae6c0668
         with:
           token: ${{ steps.app-token.outputs.token }}
           gpg-secret-key: ${{ secrets.CI_GPG_SECRET_KEY }}
@@ -1285,7 +1285,7 @@ jobs:
     steps:
       - name: Create GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ vars.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -1324,7 +1324,7 @@ jobs:
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
 
       - name: Configure release git signing
-        uses: InditexTech/gh-actions/configure-release-git@3dac9bbff47d1e983604671191a08e4d345d9064
+        uses: InditexTech/gh-actions/configure-release-git@ab7978dfa118776238a6982e445707a1ae6c0668
         with:
           token: ${{ steps.app-token.outputs.token }}
           gpg-secret-key: ${{ secrets.CI_GPG_SECRET_KEY }}
