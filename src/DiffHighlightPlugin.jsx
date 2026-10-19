@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
 // SPDX-License-Identifier: Apache-2.0
-import React, { createContext, useContext } from "react";
+import React, { createContext, useContext, useMemo } from "react";
 
 const EnumDiffContext = createContext(null);
 
@@ -9,7 +9,7 @@ const enumValueKey = (value) =>
     item && typeof item === "object" && !Array.isArray(item)
       ? Object.fromEntries(
           Object.keys(item)
-            .sort()
+            .sort((a, b) => a.localeCompare(b))
             .map((key) => [key, item[key]])
         )
       : item
@@ -127,7 +127,7 @@ const localRefResolver = (specJson) => (ref) =>
         ref
           .slice(2)
           .split("/")
-          .map((token) => token.replace(/~1/g, "/").replace(/~0/g, "~"))
+          .map((token) => token.replaceAll("~1", "/").replaceAll("~0", "~"))
       )
     : undefined;
 
@@ -177,13 +177,23 @@ const DiffHighlightPlugin = () => ({
      */
     Model: (Original, system) =>
       function DiffModel(props) {
-        const status = readStatus(props.schema);
-        const original = props.schema?.get("x-diff-original");
-        const updated = props.schema?.get("x-diff-new");
+        const { schema: rawSchema, getComponent } = props;
+        const status = readStatus(rawSchema);
+        const original = rawSchema?.get("x-diff-original");
+        const updated = rawSchema?.get("x-diff-new");
         const originalEnum = original?.get("enum");
         const updatedEnum = updated?.get("enum");
         const enumChanged =
-          status === "updated" && (originalEnum || updatedEnum);
+          status === "updated" && Boolean(originalEnum || updatedEnum);
+        const type = rawSchema?.get("type") || "object";
+        const supplemental = type === "object" || type === "array";
+        const enumDiff = useMemo(
+          () =>
+            enumChanged
+              ? { original, updated, supplemental, getComponent }
+              : null,
+          [enumChanged, original, updated, supplemental, getComponent]
+        );
 
         if (status === "updated" && !enumChanged) {
           const originalType = describeSchema(original);
@@ -206,30 +216,21 @@ const DiffHighlightPlugin = () => ({
         }
 
         const marked = containsChange(
-          props.schema,
+          rawSchema,
           localRefResolver(specJsonOf(system))
         );
 
         if (enumChanged) {
-          const type = props.schema.get("type") || "object";
-          const supplemental = type === "object" || type === "array";
           const schema = supplemental
-            ? props.schema
+            ? rawSchema
                 .remove("enum")
                 .remove("x-diff-status")
                 .remove("x-diff-original")
                 .remove("x-diff-new")
-            : props.schema.set("enum", updatedEnum || originalEnum);
+            : rawSchema.set("enum", updatedEnum || originalEnum);
           return (
             <ContainsChangeContext.Provider value={marked}>
-              <EnumDiffContext.Provider
-                value={{
-                  original,
-                  updated,
-                  supplemental,
-                  getComponent: props.getComponent,
-                }}
-              >
+              <EnumDiffContext.Provider value={enumDiff}>
                 <Original {...props} schema={schema} />
               </EnumDiffContext.Provider>
             </ContainsChangeContext.Provider>
@@ -264,6 +265,10 @@ const DiffHighlightPlugin = () => ({
       function DiffModelCollapse(props) {
         const fromModel = useContext(ContainsChangeContext);
         const diff = useContext(EnumDiffContext);
+        const nestedDiff = useMemo(
+          () => diff && { ...diff, supplemental: false },
+          [diff]
+        );
         const specJson = specJsonOf(system);
         const marked =
           fromModel ??
@@ -285,9 +290,7 @@ const DiffHighlightPlugin = () => ({
           <EnumDiffContext.Provider value={null}>
             <Original {...props} classes={classes}>
               {props.children}
-              <EnumDiffContext.Provider
-                value={{ ...diff, supplemental: false }}
-              >
+              <EnumDiffContext.Provider value={nestedDiff}>
                 <EnumModel getComponent={diff.getComponent} />
               </EnumDiffContext.Provider>
             </Original>
@@ -311,6 +314,11 @@ const DiffHighlightPlugin = () => ({
         );
         const originalType = describeSchema(diff.original);
         const updatedType = describeSchema(diff.updated);
+        const valueClass = (key) => {
+          if (!originalKeys.has(key)) return "diff-added";
+          if (!updatedKeys.has(key)) return "diff-deleted";
+          return undefined;
+        };
         const ModelCollapse = props.getComponent("ModelCollapse");
         return (
           <span className="prop-enum">
@@ -336,22 +344,19 @@ const DiffHighlightPlugin = () => ({
                 </>
               )}
               {"[ "}
-              {values.map((value, index) => (
-                <React.Fragment key={index}>
-                  {index > 0 && ", "}
-                  <span
-                    className={
-                      !originalKeys.has(enumValueKey(value))
-                        ? "diff-added"
-                        : !updatedKeys.has(enumValueKey(value))
-                          ? "diff-deleted"
-                          : undefined
-                    }
-                  >
-                    {typeof value === "string" ? value : JSON.stringify(value)}
-                  </span>
-                </React.Fragment>
-              ))}
+              {values.map((value, index) => {
+                const key = enumValueKey(value);
+                return (
+                  <React.Fragment key={key}>
+                    {index > 0 && ", "}
+                    <span className={valueClass(key)}>
+                      {typeof value === "string"
+                        ? value
+                        : JSON.stringify(value)}
+                    </span>
+                  </React.Fragment>
+                );
+              })}
               {" ]"}
               {!updatedEnum && (
                 <>
