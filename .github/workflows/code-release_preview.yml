@@ -18,6 +18,8 @@ concurrency:
 env:
   PROJECT_TYPE: ${{ vars.PROJECT_TYPE }}
   WORKING_DIRECTORY: ${{ vars.WORKING_DIRECTORY }}
+  PACKAGE_MANAGER: ${{ vars.PACKAGE_MANAGER }}
+  ASDF_BRANCH_VERSION: '0.18.0'
 
 jobs:
   release-preview:
@@ -34,13 +36,38 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+    outputs:
+      merge_commit: ${{ steps.merge-commit.outputs.merge_commit }}
+      release_bump: ${{ steps.release-type.outputs.release_bump }}
     steps:
-      - name: Check out pull request head
+      - name: Resolve pull request merge commit
+        id: merge-commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_EVENT_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/pull/${GITHUB_EVENT_NUMBER}/merge" ]] \
+            || [[ ! "$MERGE_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            || [[ "$MERGE_SHA" == "$HEAD_SHA" ]]; then
+            echo "::error title=No merge commit::GitHub provides no merge commit of this pull request with its base, so no release can be proposed."
+            body=$'### Release Preview\n\nGitHub provides no merge commit of this pull request with its base (for example, it conflicts with its base), so no release is proposed. Resolve the conflict to get a preview.'
+            gh pr comment "$GITHUB_EVENT_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body "$body"
+            exit 1
+          fi
+          echo "merge_commit=$MERGE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Check out pull request merge commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ steps.merge-commit.outputs.merge_commit }}
 
       - name: Check CHANGELOG has Unreleased changes
         if: >-
@@ -62,13 +89,13 @@ jobs:
             exit 1
           fi
 
-      - name: Calculate release preview
+      - name: Resolve release type
+        id: release-type
         env:
           DEVELOPMENT_FLOW: ${{ vars.DEVELOPMENT_FLOW }}
           GITHUB_EVENT_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-        working-directory: ${{ env.WORKING_DIRECTORY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -100,53 +127,136 @@ jobs:
               ;;
           esac
 
+          echo "release_bump=$release_bump" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve release packages
+        id: release-packages
+        if: vars.RELEASE_LIFECYCLE != 'delegated' && steps.release-type.outputs.release_bump != ''
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          descriptor="$GITHUB_WORKSPACE/.github/inditextech-ci-node.json"
+          member_dir() {
+            printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+          }
+          member_directory() {
+            local mapped
+            if mapped="$(jq -er --arg p "$1" '.[$p]' <<< "$PACKAGE_PATHS" 2>/dev/null)"; then
+              if [[ ! "$mapped" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+                echo "::error title=Invalid release.package_paths::directory for '$1' must be a single lowercase [a-z0-9][a-z0-9._-]* segment under packages/." >&2
+                exit 1
+              fi
+              printf '%s' "$mapped"
+              return
+            fi
+            echo "::notice title=Derived release member::directory for '$1' derived from the package name." >&2
+            member_dir "$1"
+          }
+          require_manifest() {
+            if [[ ! -f "$1/package.json" ]]; then
+              echo "::error title=Release member missing::package.json not found at '$1'. Check release.package_paths in $descriptor."
+              exit 1
+            fi
+          }
+
+          if [[ "$PROJECT_TYPE" == "single" ]]; then
+            release_strategy=single
+            require_manifest "."
+            name="$(jq -er '.name | select(type == "string" and length > 0)' package.json)"
+            declared="$(jq -r '.version // ""' package.json)"
+            members="$(jq -cn --arg name "$name" '[$name]')"
+            packages="$(jq -cn --arg name "$name" --arg declared "$declared" \
+              '[{name: $name, "tag-prefix": "", "declared-version": $declared}]')"
+          elif [[ "$PROJECT_TYPE" == "workspaces" ]]; then
+            release_strategy="$(jq -er '.release.strategy' "$descriptor")"
+            PACKAGE_PATHS="$(jq -c '.release.package_paths // {}' "$descriptor")"
+            names="$(jq -er '.release.packages[]' "$descriptor")"
+            entries="$RUNNER_TEMP/node-release-version-packages.jsonl"
+            : > "$entries"
+            while IFS= read -r package; do
+              member="$(member_directory "$package")"
+              require_manifest "packages/$member"
+              declared="$(jq -r '.version // ""' "packages/$member/package.json")"
+              jq -cn --arg name "$package" --arg member "$member" --arg declared "$declared" \
+                '{name: $name, member: $member, declared: $declared}' >> "$entries"
+            done <<< "$names"
+            members="$(jq -cs 'map(.member)' "$entries")"
+            case "$release_strategy" in
+              independent)
+                packages="$(jq -cs 'map({name: .name, "tag-prefix": "\(.member)-", "declared-version": .declared})' "$entries")"
+                ;;
+              locked-step)
+                packages="$(jq -cs '[{name: (map(.member) | join(", ")), "tag-prefix": "", "declared-version": .[0].declared}]' "$entries")"
+                ;;
+              *)
+                echo "::error title=Invalid release strategy::.release.strategy must be locked-step or independent."
+                exit 1
+                ;;
+            esac
+          else
+            echo "::error title=Invalid project type::PROJECT_TYPE must be single or workspaces."
+            exit 1
+          fi
+
+          {
+            echo "strategy=$release_strategy"
+            echo "members=$members"
+            echo "packages=$packages"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Compute release version
+        id: release-version
+        if: vars.RELEASE_LIFECYCLE != 'delegated' && steps.release-type.outputs.release_bump != ''
+        uses: InditexTech/gh-actions/release-version@ab7978dfa118776238a6982e445707a1ae6c0668 # v1.2.0
+        with:
+          release-type: ${{ steps.release-type.outputs.release_bump }}
+          tag-format: bare
+          strategy: ${{ steps.release-packages.outputs.strategy }}
+          packages: ${{ steps.release-packages.outputs.packages }}
+          dev-suffix: '-SNAPSHOT'
+
+      - name: Calculate release preview
+        if: vars.RELEASE_LIFECYCLE != 'delegated' && steps.release-type.outputs.release_bump != ''
+        env:
+          DEVELOPMENT_FLOW: ${{ vars.DEVELOPMENT_FLOW }}
+          GITHUB_EVENT_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BUMP: ${{ steps.release-type.outputs.release_bump }}
+          RELEASE_PACKAGES: ${{ steps.release-packages.outputs.packages }}
+          RELEASE_STRATEGY: ${{ steps.release-packages.outputs.strategy }}
+          RELEASES: ${{ steps.release-version.outputs.releases }}
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
           merge_strategy="Create a merge commit"
           if [[ "$DEVELOPMENT_FLOW" == "trunk-based-development" ]]; then
             merge_strategy="Squash and merge"
           fi
 
-          member_dir() {
-            printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
-          }
-          strip_snapshot() { printf '%s' "${1%-SNAPSHOT}"; }
-          read_version() {
-            local manifest="package.json"
-            [[ -n "$1" ]] && manifest="$1/package.json"
-            jq -r '.version' "$manifest"
-          }
-          bump_semver() {
-            local major minor patch
-            IFS=. read -r major minor patch <<< "$1"
-            case "$2" in
-              major) major=$((major + 1)); minor=0; patch=0 ;;
-              minor) minor=$((minor + 1)); patch=0 ;;
-              patch) patch=$((patch + 1)) ;;
-            esac
-            printf '%s.%s.%s' "$major" "$minor" "$patch"
-          }
-
-          if [[ "$PROJECT_TYPE" == "single" ]]; then
-            current_version="$(read_version "")"
-            release_version="$(strip_snapshot "$current_version")"
-            next_dev="$(bump_semver "$release_version" "$release_bump")-SNAPSHOT"
-            versions="$(printf '%s\n' \
-              "- Current version: \`$current_version\`" \
-              "- Proposed release version: \`$release_version\`" \
-              "- Next development version: \`$next_dev\`")"
-          elif [[ "$PROJECT_TYPE" == "workspaces" ]]; then
-            descriptor="$GITHUB_WORKSPACE/.github/inditextech-ci-node.json"
-            release_strategy="$(jq -r '.release.strategy' "$descriptor")"
-            versions="- Reactor release strategy: \`$release_strategy\`"
-            while IFS= read -r package; do
-              member="$(member_dir "$package")"
-              current_version="$(read_version "packages/$member")"
-              release_version="$(strip_snapshot "$current_version")"
-              next_dev="$(bump_semver "$release_version" "$release_bump")-SNAPSHOT"
-              versions+=$'\n'"- \`$package\` (packages/$member): \`$current_version\` -> \`$release_version\` (next dev: \`$next_dev\`)"
-            done < <(jq -r '.release.packages[]' "$descriptor")
+          release_lines="$(jq -er '.[] |
+            "- `\(.package)`: latest release \(if .base == "" then "_none (first release)_" else "`\(.base)`" end) -> proposed `\(.version)` (tag `\(.tag)`, next development `\(.next_dev)`)"' <<< "$RELEASES")"
+          if [[ "$RELEASE_STRATEGY" == "single" ]]; then
+            versions="$release_lines"
           else
-            echo "::error title=Invalid project type::PROJECT_TYPE must be single or workspaces."
-            exit 1
+            versions="- Reactor release strategy: \`$RELEASE_STRATEGY\`"$'\n'"$release_lines"
+          fi
+
+          warnings="$(jq -er --argjson packages "$RELEASE_PACKAGES" '
+            [to_entries[]
+              | select(.value.declared_ahead)
+              | "> :warning: Declared version `\($packages[.key]."declared-version" | sub("-SNAPSHOT$"; ""))` of `\(.value.package)` is ahead of the computed release `\(.value.version)`; the cut releases `\(.value.version)` (the `release-type/...` label sets the version)."]
+            | join("\n")' <<< "$RELEASES")"
+          warning_block=""
+          if [[ -n "$warnings" ]]; then
+            while IFS= read -r warning; do
+              warning="${warning#> :warning: }"
+              echo "::warning title=Declared version ahead::${warning//\`/}"
+            done <<< "$warnings"
+            warning_block=$'\n'"$warnings"$'\n'
           fi
 
           changes="$(awk '
@@ -156,12 +266,185 @@ jobs:
             capture { print }
           ' CHANGELOG.md)"
 
-          body="$(printf "%s\n\n%s\n- Release type: \`%s\`\n- Expected merge strategy: **%s**\n\n#### Changes\n%s" \
+          body="$(printf "%s\n\n%s\n- Release type: \`%s\`\n- Expected merge strategy: **%s**\n%s\n#### Changes\n%s" \
             '### Node Release Preview' \
             "$versions" \
-            "$release_bump" \
+            "$RELEASE_BUMP" \
             "$merge_strategy" \
+            "$warning_block" \
             "$changes")"
+          gh pr comment "$GITHUB_EVENT_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "$body"
+
+  delegated-release-preview:
+    name: Delegated Release Preview sandbox
+    needs: release-preview
+    if: vars.RELEASE_LIFECYCLE == 'delegated' && needs.release-preview.outputs.release_bump != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      tags: ${{ steps.delegate.outputs.tags }}
+    steps:
+      - name: Check out pull request merge commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.release-preview.outputs.merge_commit }}
+
+      - name: Read governed tool versions
+        id: tool-versions
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Evq '^[a-zA-Z0-9_-]+ [a-zA-Z0-9._+-]+$' .tool-versions; then
+            echo "::error title=Invalid tool-versions::${WORKING_DIRECTORY}/.tool-versions is malformed."
+            exit 1
+          fi
+          {
+            echo "tool_versions<<EOF"
+            cat .tool-versions
+            echo
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up asdf-managed Node
+        uses: asdf-vm/actions/install@b7bcd026f18772e44fe1026d729e1611cc435d47 # v4.0.1
+        with:
+          tool_versions: ${{ steps.tool-versions.outputs.tool_versions }}
+          asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
+
+      - name: Install dependencies without lifecycle scripts
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${PACKAGE_MANAGER:-npm}" in
+            npm)  npm ci --ignore-scripts ;;
+            pnpm) corepack enable; pnpm install --frozen-lockfile --ignore-scripts ;;
+            *)    echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."; exit 1 ;;
+          esac
+
+      - name: Run release:prepare in the sandbox
+        id: delegate
+        env:
+          BASELINE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          DEVELOPMENT_FLOW: ${{ vars.DEVELOPMENT_FLOW }}
+          RELEASE_BUMP: ${{ needs.release-preview.outputs.release_bump }}
+          RELEASE_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          RELEASE_SOURCE_COMMIT: ${{ needs.release-preview.outputs.merge_commit }}
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$RELEASE_BUMP" in
+            major|minor|patch) : ;;
+            *)
+              echo "::error title=Invalid release type::The release type must be major, minor or patch."
+              exit 1
+              ;;
+          esac
+
+          git config --local user.name "Release Preview sandbox"
+          git config --local user.email "release-preview-sandbox@localhost.invalid"
+
+          git tag | sort > "$RUNNER_TEMP/tags-before.txt"
+          run_delegate() {
+            case "${PACKAGE_MANAGER:-npm}" in
+              npm)  npm run release:prepare ;;
+              pnpm) corepack enable && pnpm run release:prepare ;;
+              *)    echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."; return 1 ;;
+            esac
+          }
+          if ! run_delegate; then
+            echo "::error title=release:prepare failed::release:prepare failed in the preview sandbox; the release cut would fail the same way."
+            exit 1
+          fi
+          git tag | sort > "$RUNNER_TEMP/tags-after.txt"
+
+          tags="$(comm -13 "$RUNNER_TEMP/tags-before.txt" "$RUNNER_TEMP/tags-after.txt" \
+            | jq -Rsc 'split("\n") | map(select(length > 0))')"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
+  delegated-release-preview-comment:
+    name: Delegated Release Preview
+    needs: [release-preview, delegated-release-preview]
+    if: >-
+      !cancelled() &&
+      vars.RELEASE_LIFECYCLE == 'delegated' &&
+      needs.release-preview.result == 'success' &&
+      needs.release-preview.outputs.release_bump != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Comment delegated release preview
+        env:
+          DEVELOPMENT_FLOW: ${{ vars.DEVELOPMENT_FLOW }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_EVENT_NUMBER: ${{ github.event.pull_request.number }}
+          RELEASE_BUMP: ${{ needs.release-preview.outputs.release_bump }}
+          SANDBOX_RESULT: ${{ needs.delegated-release-preview.result }}
+          SANDBOX_TAGS: ${{ needs.delegated-release-preview.outputs.tags }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          header='### Node Release Preview'
+          report() {
+            echo "::error title=No delegated release preview::$1"
+            gh pr comment "$GITHUB_EVENT_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body "$header"$'\n\n'"$2"
+            exit 1
+          }
+          outside_pattern="\`release:prepare\` created a tag outside the release tag patterns \`X.Y.Z\` and \`<member>-X.Y.Z\` in the preview sandbox, so no release is proposed."
+
+          if [[ "$SANDBOX_RESULT" != "success" ]]; then
+            report "release:prepare did not complete in the preview sandbox." \
+              "\`release:prepare\` did not complete in the preview sandbox (the script failed, or the sandbox could not run it), so no release is proposed; the release cut would fail the same way. See the sandbox job log."
+          fi
+
+          pattern='\A([a-z0-9][a-z0-9._-]*-)?[0-9]+\.[0-9]+\.[0-9]+\z'
+          if ! jq -e --arg pattern "$pattern" \
+            'type == "array" and all(.[]; type == "string" and test($pattern))' \
+            <<< "$SANDBOX_TAGS" > /dev/null 2>&1; then
+            report "release:prepare created a tag outside the release tag pattern." "$outside_pattern"
+          fi
+          if [[ "$(jq 'length' <<< "$SANDBOX_TAGS")" -eq 0 ]]; then
+            report "release:prepare created no release tag." \
+              "\`release:prepare\` created no release tag in the preview sandbox, so no release is proposed; the release cut would fail the same way."
+          fi
+
+          tag_lines=""
+          while IFS= read -r tag; do
+            if [[ ! "$tag" =~ ^([a-z0-9][a-z0-9._-]*-)?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              report "release:prepare created a tag outside the release tag pattern." "$outside_pattern"
+            fi
+            tag_lines+="- \`$tag\`"$'\n'
+          done < <(jq -r '.[]' <<< "$SANDBOX_TAGS")
+
+          case "$RELEASE_BUMP" in
+            major|minor|patch) : ;;
+            *) report "The release type could not be read." "The release type could not be read, so no release is proposed." ;;
+          esac
+          merge_strategy="Create a merge commit"
+          if [[ "$DEVELOPMENT_FLOW" == "trunk-based-development" ]]; then
+            merge_strategy="Squash and merge"
+          fi
+
+          body="$(printf "%s\n\n%s\n%s\n- Release type: \`%s\`\n- Expected merge strategy: **%s**" \
+            "$header" \
+            "\`release:prepare\` ran in a sandbox on the merge of this pull request with its base and created these release tags:" \
+            "$tag_lines" \
+            "$RELEASE_BUMP" \
+            "$merge_strategy")"
           gh pr comment "$GITHUB_EVENT_NUMBER" \
             --repo "$GITHUB_REPOSITORY" \
             --body "$body"
