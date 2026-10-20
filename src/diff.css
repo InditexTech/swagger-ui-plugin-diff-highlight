@@ -3,25 +3,32 @@
 
 /* ----------------------------------------------------------------------------
  * Diff highlighting
+ *
+ * Swagger UI's own stylesheet colors most elements with selectors up to eight
+ * classes deep. The added / deleted / updated marks must win over all of
+ * them, so those selectors carry `:not(#_)`. It matches every element, since
+ * nothing has the id `_`, and adds ID-level specificity that no Swagger UI
+ * class selector reaches. Rules without it (updated old / new values and the
+ * ancestor mark) are meant to lose to the marks inside them.
  * ------------------------------------------------------------------------- */
 
 /* Added: green + bold */
-.diff-added,
-.diff-added * {
-  color: #1b7e3c !important;
-  font-weight: 700 !important;
+.diff-added:not(#_),
+.diff-added:not(#_) * {
+  color: #1b7e3c;
+  font-weight: 700;
 }
 
 /* Deleted: red + strikethrough */
-.diff-deleted,
-.diff-deleted * {
-  color: #c0392b !important;
-  text-decoration: line-through !important;
+.diff-deleted:not(#_),
+.diff-deleted:not(#_) * {
+  color: #c0392b;
+  text-decoration: line-through;
 }
 
 /* Updated rows (parameters / operations / responses): amber marker */
-.diff-wrap.diff-updated * {
-  color: #b9770e !important;
+.diff-wrap.diff-updated:not(#_) * {
+  color: #b9770e;
 }
 
 /* Updated attribute value: original (red strike) -> new (green bold) */
@@ -50,34 +57,53 @@
  * The value cell (2nd <td>) carries the diff class; :has() lets us reach the
  * sibling name cell (1st <td>) rendered by ObjectModel. The `> td >` scoping
  * keeps a change from leaking onto ancestor rows of nested objects. */
-.swagger-ui tr.property-row:has(> td > .diff-deleted) > td:first-child,
-.swagger-ui tr.property-row:has(> td > .diff-deleted) > td:first-child * {
-  color: #c0392b !important;
-  text-decoration: line-through !important;
+.swagger-ui:not(#_) tr.property-row:has(> td > .diff-deleted) > td:first-child,
+.swagger-ui:not(#_)
+  tr.property-row:has(> td > .diff-deleted)
+  > td:first-child
+  * {
+  color: #c0392b;
+  text-decoration: line-through;
 }
 
-.swagger-ui tr.property-row:has(> td > .diff-added) > td:first-child,
-.swagger-ui tr.property-row:has(> td > .diff-added) > td:first-child * {
-  color: #1b7e3c !important;
-  font-weight: 700 !important;
+.swagger-ui:not(#_) tr.property-row:has(> td > .diff-added) > td:first-child,
+.swagger-ui:not(#_) tr.property-row:has(> td > .diff-added) > td:first-child * {
+  color: #1b7e3c;
+  font-weight: 700;
+}
+
+/* Schema accordion segments hiding a change: mark only the header button so
+ * the expanded body stays unpainted. No `:not(#_)`, so the added / deleted
+ * leaf rules above still win inside the header. */
+.swagger-ui .diff-ancestor > .model-box-control,
+.swagger-ui .diff-ancestor > .model-box-control * {
+  color: #b9770e;
+}
+
+/* A nested schema's accordion has no title, so also mark the property name
+ * cell of the row whose value is that accordion. */
+.swagger-ui
+  tr.property-row:has(> td > .model > .diff-ancestor)
+  > td:first-child {
+  color: #b9770e;
 }
 
 /* Operation-level changes: tag the whole opblock but only paint the
  * always-visible summary row, so the mark is shown whether the operation is
  * collapsed or expanded. */
-.diff-op-deleted .opblock-summary,
-.diff-op-deleted .opblock-summary * {
-  color: #c0392b !important;
-  text-decoration: line-through !important;
+.diff-op-deleted:not(#_) .opblock-summary,
+.diff-op-deleted:not(#_) .opblock-summary * {
+  color: #c0392b;
+  text-decoration: line-through;
 }
 
-.diff-op-added .opblock-summary,
-.diff-op-added .opblock-summary * {
-  color: #1b7e3c !important;
-  font-weight: 700 !important;
+.diff-op-added:not(#_) .opblock-summary,
+.diff-op-added:not(#_) .opblock-summary * {
+  color: #1b7e3c;
+  font-weight: 700;
 }
 
-.diff-op-updated .opblock-summary,
-.diff-op-updated .opblock-summary * {
-  color: #b9770e !important;
+.diff-op-updated:not(#_) .opblock-summary,
+.diff-op-updated:not(#_) .opblock-summary * {
+  color: #b9770e;
 }
