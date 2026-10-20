@@ -71,17 +71,40 @@
  * ------------------------------------------------------------------------- */
 
 .diff-modal__overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  border: none;
+  background: transparent;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
   padding: 24px;
 }
 
+.diff-modal__overlay[open] {
+  display: flex;
+}
+
+.diff-modal__overlay::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+/* Fills the dialog behind the panel so a click outside the panel closes it. */
+.diff-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: default;
+}
+
 .diff-modal {
+  position: relative;
+  z-index: 1;
   background: #fff;
   border-radius: 8px;
   width: min(820px, 100%);
@@ -191,7 +214,7 @@
 }
 
 .diff-stat--changed {
-  color: #b9770e;
+  color: #96600b;
   background: #fdf3e3;
   border-color: #f3e0bd;
 }

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
 // SPDX-License-Identifier: Apache-2.0
+import { defineConfig } from "eslint/config";
 import js from "@eslint/js";
 import globals from "globals";
 import react from "eslint-plugin-react";
@@ -7,9 +8,9 @@ import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 import prettier from "eslint-config-prettier";
 
-export default tseslint.config(
+export default defineConfig(
   {
-    ignores: ["dist/", "node_modules/", "example/"],
+    ignores: ["dist/", "node_modules/", "example/", "coverage/"],
   },
 
   // Library source and tests (JavaScript + JSX).
