@@ -284,16 +284,134 @@ jobs:
             *)    echo "::error title=Invalid package manager::PACKAGE_MANAGER must be npm or pnpm."; exit 1 ;;
           esac
 
+      - name: Resolve release type
+        id: release-type
+        if: vars.RELEASE_LIFECYCLE != 'delegated'
+        env:
+          DEVELOPMENT_FLOW: ${{ vars.DEVELOPMENT_FLOW }}
+          RELEASE_LABELS: ${{ steps.release-context.outputs.release_labels }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case ",$RELEASE_LABELS," in
+            *",release-type/major,"*) release_bump="major" ;;
+            *",release-type/minor,"*) release_bump="minor" ;;
+            *",release-type/hotfix,"*|*",release-type/multi-hotfix,"*|*",release-type/patch,"*)
+              release_bump="patch"
+              ;;
+            *)
+              if [[ "$DEVELOPMENT_FLOW" == "trunk-based-development" ]]; then
+                release_bump="minor"
+              else
+                echo "::error title=Missing release type::git-flow releases require a release-type label."
+                exit 1
+              fi
+              ;;
+          esac
+
+          echo "release_bump=$release_bump" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve release packages
+        id: release-packages
+        if: vars.RELEASE_LIFECYCLE != 'delegated'
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          descriptor="$GITHUB_WORKSPACE/.github/inditextech-ci-node.json"
+          member_dir() {
+            printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+          }
+          member_directory() {
+            local mapped
+            if mapped="$(jq -er --arg p "$1" '.[$p]' <<< "$PACKAGE_PATHS" 2>/dev/null)"; then
+              if [[ ! "$mapped" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+                echo "::error title=Invalid release.package_paths::directory for '$1' must be a single lowercase [a-z0-9][a-z0-9._-]* segment under packages/." >&2
+                exit 1
+              fi
+              printf '%s' "$mapped"
+              return
+            fi
+            echo "::notice title=Derived release member::directory for '$1' derived from the package name." >&2
+            member_dir "$1"
+          }
+          require_manifest() {
+            if [[ ! -f "$1/package.json" ]]; then
+              echo "::error title=Release member missing::package.json not found at '$1'. Check release.package_paths in $descriptor."
+              exit 1
+            fi
+          }
+
+          if [[ "$PROJECT_TYPE" == "single" ]]; then
+            release_strategy=single
+            require_manifest "."
+            name="$(jq -er '.name | select(type == "string" and length > 0)' package.json)"
+            declared="$(jq -r '.version // ""' package.json)"
+            members="$(jq -cn --arg name "$name" '[$name]')"
+            packages="$(jq -cn --arg name "$name" --arg declared "$declared" \
+              '[{name: $name, "tag-prefix": "", "declared-version": $declared}]')"
+          elif [[ "$PROJECT_TYPE" == "workspaces" ]]; then
+            release_strategy="$(jq -er '.release.strategy' "$descriptor")"
+            PACKAGE_PATHS="$(jq -c '.release.package_paths // {}' "$descriptor")"
+            names="$(jq -er '.release.packages[]' "$descriptor")"
+            entries="$RUNNER_TEMP/node-release-version-packages.jsonl"
+            : > "$entries"
+            while IFS= read -r package; do
+              member="$(member_directory "$package")"
+              require_manifest "packages/$member"
+              declared="$(jq -r '.version // ""' "packages/$member/package.json")"
+              jq -cn --arg name "$package" --arg member "$member" --arg declared "$declared" \
+                '{name: $name, member: $member, declared: $declared}' >> "$entries"
+            done <<< "$names"
+            members="$(jq -cs 'map(.member)' "$entries")"
+            case "$release_strategy" in
+              independent)
+                packages="$(jq -cs 'map({name: .name, "tag-prefix": "\(.member)-", "declared-version": .declared})' "$entries")"
+                ;;
+              locked-step)
+                packages="$(jq -cs '[{name: (map(.member) | join(", ")), "tag-prefix": "", "declared-version": .[0].declared}]' "$entries")"
+                ;;
+              *)
+                echo "::error title=Invalid release strategy::.release.strategy must be locked-step or independent."
+                exit 1
+                ;;
+            esac
+          else
+            echo "::error title=Invalid project type::PROJECT_TYPE must be single or workspaces."
+            exit 1
+          fi
+
+          {
+            echo "strategy=$release_strategy"
+            echo "members=$members"
+            echo "packages=$packages"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Compute release version
+        id: release-version
+        if: vars.RELEASE_LIFECYCLE != 'delegated'
+        uses: InditexTech/gh-actions/release-version@ab7978dfa118776238a6982e445707a1ae6c0668 # v1.2.0
+        with:
+          release-type: ${{ steps.release-type.outputs.release_bump }}
+          tag-format: bare
+          strategy: ${{ steps.release-packages.outputs.strategy }}
+          packages: ${{ steps.release-packages.outputs.packages }}
+          dev-suffix: '-SNAPSHOT'
+
       - name: Plan release metadata
         id: release-plan
         if: vars.RELEASE_LIFECYCLE != 'delegated'
         env:
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
           BASELINE_BRANCH: ${{ steps.release-context.outputs.baseline_branch }}
-          DEVELOPMENT_FLOW: ${{ vars.DEVELOPMENT_FLOW }}
+          COMPUTED_RELEASES: ${{ steps.release-version.outputs.releases }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          RELEASE_LABELS: ${{ steps.release-context.outputs.release_labels }}
+          RELEASE_BUMP: ${{ steps.release-type.outputs.release_bump }}
+          RELEASE_MEMBERS: ${{ steps.release-packages.outputs.members }}
           RELEASE_REF: ${{ steps.release-context.outputs.release_ref }}
+          RELEASE_STRATEGY: ${{ steps.release-packages.outputs.strategy }}
         working-directory: ${{ env.WORKING_DIRECTORY }}
         shell: bash
         run: |
@@ -329,42 +447,6 @@ jobs:
             resume="true"
           fi
 
-          case ",$RELEASE_LABELS," in
-            *",release-type/major,"*) release_bump="major" ;;
-            *",release-type/minor,"*) release_bump="minor" ;;
-            *",release-type/hotfix,"*|*",release-type/multi-hotfix,"*|*",release-type/patch,"*)
-              release_bump="patch"
-              ;;
-            *)
-              if [[ "$DEVELOPMENT_FLOW" == "trunk-based-development" ]]; then
-                release_bump="minor"
-              else
-                echo "::error title=Missing release type::git-flow releases require a release-type label."
-                exit 1
-              fi
-              ;;
-          esac
-
-          member_dir() {
-            printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
-          }
-          member_directory() {
-            local mapped
-            if mapped="$(jq -er --arg p "$1" '.[$p]' <<< "$PACKAGE_PATHS" 2>/dev/null)"; then
-              if [[ ! "$mapped" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
-                echo "::error title=Invalid release.package_paths::directory for '$1' must be a single lowercase [a-z0-9][a-z0-9._-]* segment under packages/." >&2
-                exit 1
-              fi
-              printf '%s' "$mapped"
-              return
-            fi
-            echo "::notice title=Derived release member::directory for '$1' derived from the package name." >&2
-            member_dir "$1"
-          }
-          load_package_paths() {
-            PACKAGE_PATHS="$(jq -c '.release.package_paths // {}' "$descriptor")"
-          }
-          strip_snapshot() { printf '%s' "${1%-SNAPSHOT}"; }
           require_member() {
             local dir="."
             if [[ -n "$1" ]]; then
@@ -382,16 +464,6 @@ jobs:
               jq -r '.version' package.json
             fi
           }
-          bump_semver() {
-            local major minor patch
-            IFS=. read -r major minor patch <<< "$1"
-            case "$2" in
-              major) major=$((major + 1)); minor=0; patch=0 ;;
-              minor) minor=$((minor + 1)); patch=0 ;;
-              patch) patch=$((patch + 1)) ;;
-            esac
-            printf '%s.%s.%s' "$major" "$minor" "$patch"
-          }
           set_version() {
             if [[ -n "$2" ]]; then
               npm pkg set "version=$1" --workspace "packages/$2"
@@ -399,75 +471,72 @@ jobs:
               npm pkg set "version=$1"
             fi
           }
-
-          if [[ "$PROJECT_TYPE" == "single" ]]; then
-            release_strategy=single
-            printf '%s\n' "$(jq -r '.name' package.json)" > "$members_file"
-          elif [[ "$PROJECT_TYPE" == "workspaces" ]]; then
-            release_strategy="$(jq -er '.release.strategy' "$descriptor")"
-            load_package_paths
-            : > "$members_file"
-            while IFS= read -r package; do
-              printf '%s\n' "$(member_directory "$package")" >> "$members_file"
-            done < <(jq -er '.release.packages[]' "$descriptor")
-          else
-            echo "::error title=Invalid project type::PROJECT_TYPE must be single or workspaces."
+          release_mismatch() {
+            echo "::error title=Release version mismatch::$1"
             exit 1
-          fi
+          }
+
+          release_strategy="$RELEASE_STRATEGY"
+          jq -r '.[]' <<< "$RELEASE_MEMBERS" > "$members_file"
 
           write_records() {
             : > "$records_file"
-            if [[ "$release_strategy" == "single" ]]; then
-              package_name="$(<"$members_file")"
-              require_member ""
-              version="$(strip_snapshot "$(read_version "")")"
-              next_dev="$(bump_semver "$version" "$release_bump")-SNAPSHOT"
-              jq -cn \
-                --arg package "$package_name" \
-                --arg version "$version" \
-                --arg tag "$version" \
-                --arg next_dev "$next_dev" \
-                '{packages: [$package], version: $version, tag: $tag, next_dev: $next_dev}' >> "$records_file"
+            if ! jq -e '
+              type == "array" and length > 0 and
+              all(.[];
+                (.version | type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
+                (.next_dev | type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+-SNAPSHOT$")))
+            ' <<< "$COMPUTED_RELEASES" > /dev/null; then
+              release_mismatch "The release-version action returned no strict X.Y.Z release and X.Y.Z-SNAPSHOT next development versions."
+            fi
+            members=()
+            while IFS= read -r member; do
+              members+=("$member")
+            done < "$members_file"
+
+            if [[ "$release_strategy" == "independent" ]]; then
+              if [[ "$(jq 'length' <<< "$COMPUTED_RELEASES")" -ne "${#members[@]}" ]]; then
+                release_mismatch "The release-version action must return one record per released package."
+              fi
+              index=0
+              for member in "${members[@]}"; do
+                require_member "$member"
+                record="$(jq -c --argjson index "$index" '.[$index]' <<< "$COMPUTED_RELEASES")"
+                version="$(jq -r '.version' <<< "$record")"
+                if [[ "$(jq -r '.tag' <<< "$record")" != "${member}-${version}" ]]; then
+                  release_mismatch "The computed tag of '$member' is not '${member}-${version}'."
+                fi
+                jq -c --arg member "$member" '. + {packages: [$member]}' <<< "$record" >> "$records_file"
+                index=$((index + 1))
+              done
               return
             fi
 
-            if [[ "$release_strategy" == "locked-step" ]]; then
-              members=()
-              while IFS= read -r member; do
-                members+=("$member")
-              done < "$members_file"
-            versions=()
-            for member in "${members[@]}"; do
-              require_member "$member"
-              versions+=("$(strip_snapshot "$(read_version "$member")")")
-            done
-              if [[ "$(printf '%s\n' "${versions[@]}" | sort -u | wc -l | tr -d ' ')" -ne 1 ]]; then
+            if [[ "$(jq 'length' <<< "$COMPUTED_RELEASES")" -ne 1 ]]; then
+              release_mismatch "A $release_strategy release takes exactly one computed record."
+            fi
+            record="$(jq -c '.[0]' <<< "$COMPUTED_RELEASES")"
+            version="$(jq -r '.version' <<< "$record")"
+            if [[ "$(jq -r '.tag' <<< "$record")" != "$version" ]]; then
+              release_mismatch "The computed tag is not '$version'."
+            fi
+            if [[ "$release_strategy" == "single" ]]; then
+              require_member ""
+            else
+              declared=()
+              for member in "${members[@]}"; do
+                require_member "$member"
+                declared_version="$(read_version "$member")"
+                declared+=("${declared_version%-SNAPSHOT}")
+              done
+              if [[ "$(jq -r '.first_release' <<< "$record")" == "true" ]] \
+                && [[ "$(printf '%s\n' "${declared[@]}" | sort -u | wc -l | tr -d ' ')" -ne 1 ]]; then
                 echo "::error title=Invalid locked-step reactor::All release members must share the same version."
                 exit 1
               fi
-              version="${versions[0]}"
-              next_dev="$(bump_semver "$version" "$release_bump")-SNAPSHOT"
-              members_json="$(printf '%s\n' "${members[@]}" | jq -R . | jq -sc .)"
-              jq -cn \
-                --argjson packages "$members_json" \
-                --arg version "$version" \
-                --arg tag "$version" \
-                --arg next_dev "$next_dev" \
-                '{packages: $packages, version: $version, tag: $tag, next_dev: $next_dev}' >> "$records_file"
-              return
             fi
-
-          while IFS= read -r member; do
-            require_member "$member"
-            version="$(strip_snapshot "$(read_version "$member")")"
-            next_dev="$(bump_semver "$version" "$release_bump")-SNAPSHOT"
-            jq -cn \
-              --arg member "$member" \
-              --arg version "$version" \
-              --arg tag "${member}-${version}" \
-              --arg next_dev "$next_dev" \
-              '{packages: [$member], version: $version, tag: $tag, next_dev: $next_dev}' >> "$records_file"
-          done < "$members_file"
+            members_json="$(printf '%s\n' "${members[@]}" | jq -R . | jq -sc .)"
+            jq -c --argjson packages "$members_json" '. + {packages: $packages}' <<< "$record" >> "$records_file"
           }
 
           if [[ "$resume" == "false" ]]; then
@@ -553,13 +622,13 @@ jobs:
             # version (empty for single and locked-step releases).
             primary_tag="$(jq -r '.[0].tag' <<< "$releases")"
             echo "CHANGELOG_TAG_PREFIX=${primary_tag%"$primary_version"}" >> "$GITHUB_ENV"
-            echo "RELEASE_BUMP=$release_bump" >> "$GITHUB_ENV"
+            echo "RELEASE_BUMP=$RELEASE_BUMP" >> "$GITHUB_ENV"
           else
             write_records
             releases="$(jq -cs . "$records_file")"
             head_commit="$(git rev-parse HEAD)"
             while IFS= read -r tag; do
-              if [[ "$(git rev-list -n 1 "$tag")" != "$head_commit" ]]; then
+              if [[ "$(git rev-list -n 1 "refs/tags/$tag" 2>/dev/null || true)" != "$head_commit" ]]; then
                 echo "::error title=Incomplete release resume::$tag does not point to the release commit."
                 exit 1
               fi
