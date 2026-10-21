@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Bumped the development dependency `tsup` from `^8.3.5` to `^9.0.0`
 - `styles.css` no longer uses `!important`. The diff marks still override Swagger UI's styles through selector specificity, so they render the same
 - Test runs now report coverage to SonarCloud through `coverage/lcov.info`
 
