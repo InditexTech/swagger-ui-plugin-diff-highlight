@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 INDUSTRIA DE DISEÑO TEXTIL S.A. (INDITEX S.A.)
 // SPDX-License-Identifier: Apache-2.0
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 
 const CHANGE_META = {
   added: { label: "Added", className: "added" },
@@ -21,27 +21,29 @@ function countByChange(groups) {
 }
 
 export default function ReportModal({ report, onClose }) {
+  const dialogRef = useRef(null);
+
   useEffect(() => {
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+    dialogRef.current.showModal();
+  }, []);
+
+  // Escape fires `cancel`. Let the parent unmount the dialog instead of the
+  // browser closing it behind React's back.
+  const onCancel = (event) => {
+    event.preventDefault();
+    onClose();
+  };
 
   const totals = countByChange(report.groups);
 
   return (
-    <div
+    <dialog
+      ref={dialogRef}
       className="diff-modal__overlay"
-      role="dialog"
-      aria-modal="true"
       aria-label="API Changes Report"
-      onClick={onClose}
+      onCancel={onCancel}
     >
-      <div className="diff-modal" onClick={(event) => event.stopPropagation()}>
+      <div className="diff-modal">
         <div className="diff-modal__header">
           <div>
             <h2 className="diff-modal__title">API Changes Report</h2>
@@ -100,6 +102,13 @@ export default function ReportModal({ report, onClose }) {
           ))}
         </div>
       </div>
-    </div>
+      <button
+        type="button"
+        className="diff-modal__backdrop"
+        tabIndex={-1}
+        aria-label="Dismiss report"
+        onClick={onClose}
+      />
+    </dialog>
   );
 }

@@ -230,18 +230,20 @@ A modified attribute type maps to an `updated` schema property. Supply the old a
 
 ## How it works
 
-The plugin uses Swagger UI's [`wrapComponents`](https://swagger-ui.github.io/swagger-ui/usage/customization/plugin-api/) API to intercept rendering and attach diff CSS classes. It wraps four components (note the exact registration casing):
+The plugin uses Swagger UI's [`wrapComponents`](https://swagger-ui.github.io/swagger-ui/usage/customization/plugin-api/) API to intercept rendering and attach diff CSS classes. It wraps five components (note the exact registration casing):
 
-| Component      | What it marks           | Where it reads the status                              |
-| -------------- | ----------------------- | ------------------------------------------------------ |
-| `operation`    | An endpoint / opblock   | The **unresolved** spec via `specSelectors`/`specPath` |
-| `parameterRow` | A request parameter row | `props.param` / `props.rawParam`                       |
-| `response`     | A response row          | `props.response`                                       |
-| `Model`        | A schema property       | `props.schema`                                         |
+| Component       | What it marks                                               | Where it reads the status                                               |
+| --------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `operation`     | An endpoint / opblock                                       | The **unresolved** spec via `specSelectors`/`specPath`                  |
+| `parameterRow`  | A request parameter row                                     | `props.param` / `props.rawParam`                                        |
+| `response`      | A response row                                              | `props.response`                                                        |
+| `Model`         | A schema property                                           | `props.schema`                                                          |
+| `ModelCollapse` | A schema accordion that contains a change (`diff-ancestor`) | The enclosing `Model`'s schema, or the unresolved spec for root schemas |
 
-Two implementation details worth knowing:
+Three implementation details worth knowing:
 
 - **Operations are read from the unresolved spec.** Swagger UI resolves an operation's subtree _lazily_, only once it is expanded. The plugin reads `x-diff-status` straight from `specSelectors.specJson()` using the `specPath`, so the mark is visible whether the operation is **collapsed or expanded**.
+- **Schema accordions show where changes hide.** A schema accordion whose subtree contains an added, deleted, or updated schema (following nested properties, items, compositions, and `$ref`s) gets the `diff-ancestor` class. Its header text turns ochre whether it is collapsed or expanded. For a nested schema, the property name turns ochre too. Leaf colors still win inside the header.
 - **Table layout is preserved.** Rows (`<tr>`) must stay direct children of their table, so the plugin wraps them in a `display: contents` element to apply the diff class without breaking the table flow.
 
 ### Notes / caveats

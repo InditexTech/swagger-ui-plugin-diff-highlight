@@ -7,25 +7,18 @@ import { describe, expect, it } from "vitest";
 import DiffHighlightPlugin from "../DiffHighlightPlugin";
 
 const { wrapComponents } = DiffHighlightPlugin();
-
-/** Stub that stands in for the wrapped swagger-ui component. */
 const Original = () => <span>original</span>;
 
 describe("wrapComponents.Model", () => {
   const Wrapped = wrapComponents.Model(Original);
 
-  it("wraps deleted schemas in a .diff-deleted span", () => {
+  it.each(["deleted", "added"])("wraps %s schemas", (status) => {
     const { container } = render(
-      <Wrapped schema={fromJS({ "x-diff-status": "deleted" })} />
+      <Wrapped schema={fromJS({ "x-diff-status": status })} />
     );
-    expect(container.querySelector(".diff-deleted")).not.toBeNull();
-  });
-
-  it("wraps added schemas in a .diff-added span", () => {
-    const { container } = render(
-      <Wrapped schema={fromJS({ "x-diff-status": "added" })} />
+    expect(container.querySelector(`.diff-${status}`)).toHaveTextContent(
+      "original"
     );
-    expect(container.querySelector(".diff-added")).not.toBeNull();
   });
 
   it("renders old and new descriptions for updated schemas", () => {
@@ -35,10 +28,10 @@ describe("wrapComponents.Model", () => {
       "x-diff-new": { type: "integer", format: "int64" },
     });
     const { container } = render(<Wrapped schema={schema} />);
-    expect(container.querySelector(".diff-updated-old").textContent).toBe(
+    expect(container.querySelector(".diff-updated-old")).toHaveTextContent(
       "string"
     );
-    expect(container.querySelector(".diff-updated-new").textContent).toBe(
+    expect(container.querySelector(".diff-updated-new")).toHaveTextContent(
       "integer($int64)"
     );
   });
@@ -95,26 +88,27 @@ describe("wrapComponents.response", () => {
 
 describe("wrapComponents.operation", () => {
   const Wrapped = wrapComponents.operation(Original);
-
   const makeSpecSelectors = (op) => ({
     specJson: () => fromJS({ paths: { "/pets": { get: op } } }),
   });
 
   it("wraps operations whose status is read from the unresolved spec", () => {
-    const props = {
-      specSelectors: makeSpecSelectors({ "x-diff-status": "added" }),
-      specPath: List(["paths", "/pets", "get"]),
-    };
-    const { container } = render(<Wrapped {...props} />);
+    const { container } = render(
+      <Wrapped
+        specSelectors={makeSpecSelectors({ "x-diff-status": "added" })}
+        specPath={List(["paths", "/pets", "get"])}
+      />
+    );
     expect(container.querySelector(".diff-op.diff-op-added")).not.toBeNull();
   });
 
   it("passes through when the operation is unchanged", () => {
-    const props = {
-      specSelectors: makeSpecSelectors({ "x-diff-status": "unchanged" }),
-      specPath: List(["paths", "/pets", "get"]),
-    };
-    const { container } = render(<Wrapped {...props} />);
+    const { container } = render(
+      <Wrapped
+        specSelectors={makeSpecSelectors({ "x-diff-status": "unchanged" })}
+        specPath={List(["paths", "/pets", "get"])}
+      />
+    );
     expect(container.querySelector(".diff-op")).toBeNull();
   });
 
