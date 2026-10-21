@@ -86,7 +86,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "swagger-ui-react": "^5.32.14",
-    "tsup": "^8.3.5",
+    "tsup": "^9.0.0",
     "typescript-eslint": "^8.62.1",
     "vitest": "^5.0.1"
   },
