@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-21
+
 ### Added
 
 - Schema accordions that contain a changed descendant get a `diff-ancestor` class and an ochre header mark, visible while collapsed or expanded ([#64](https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/issues/64))
@@ -54,7 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial OSS repository shell.
 - Original code, including the diff highlighting plugin, and the example React application.
 
-[Unreleased]: https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/compare/0.2.0...HEAD
+[Unreleased]: https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/compare/0.3.0...HEAD
+
+[0.3.0]: https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/compare/0.2.0...0.3.0
 
 [0.2.0]: https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/compare/0.1.0...0.2.0
 
