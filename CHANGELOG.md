@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Schema accordions that contain a changed descendant get a `diff-ancestor` class and an ochre header mark, visible while collapsed or expanded ([#64](https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/issues/64))
 
+### Fixed
+
+- Enum value changes are now highlighted in models without replacing Swagger UI's native schemas ([#63](https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/pull/63))
+
 ### Changed
 
 - Bumped the development dependency `tsup` from `^8.3.5` to `^9.0.0`
