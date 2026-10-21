@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `styles.css` no longer uses `!important`. The diff marks still override Swagger UI's styles through selector specificity, so they render the same
 - Test runs now report coverage to SonarCloud through `coverage/lcov.info`
 
+### Fixed
+
+- Enum value changes are now highlighted in models without replacing Swagger UI's native schemas ([#63](https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/pull/63))
+
 ## [0.2.0] - 2026-10-15
 
 ### Security
