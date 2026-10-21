@@ -64,6 +64,7 @@ const changesReport = {
           label: '"timeout"',
           detail: "type: string → integer",
         },
+        { change: "added", label: '"preferences.language"', detail: "string" },
       ],
     },
     {

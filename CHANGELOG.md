@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Schema accordions that contain a changed descendant get a `diff-ancestor` class and an ochre header mark, visible while collapsed or expanded ([#64](https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/issues/64))
+
+### Changed
+
+- `styles.css` no longer uses `!important`. The diff marks still override Swagger UI's styles through selector specificity, so they render the same
+- Test runs now report coverage to SonarCloud through `coverage/lcov.info`
+
 ## [0.2.0] - 2026-10-15
 
 ### Security
