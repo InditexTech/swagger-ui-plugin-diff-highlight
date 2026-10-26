@@ -1,0 +1,21 @@
+example/package-lock.json
+  s_4e6bad2a954cc8::t_40e82a8cde3328 2167-2169,2473-2475
+package-lock.json
+  s_4e6bad2a954cc8::t_fcb495ae0adc95 2637-2639,3055-3057,3631-3633,4258-4260,8916-8918
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0c7c7df66b766c5aba15796683350088a89563c6",
+  "prompts": {},
+  "sessions": {
+    "s_4e6bad2a954cc8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a10c38-c3fa-7d22-b964-3e38b14f313c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}

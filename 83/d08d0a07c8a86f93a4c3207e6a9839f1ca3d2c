@@ -1,0 +1,31 @@
+CHANGELOG.md
+  s_30dea5da287288::t_9b15118e2401c0 16
+package-lock.json
+  s_c4f25e7c3c0006::t_dbaf16278bc8e2 3,9
+package.json
+  s_c4f25e7c3c0006::t_38142aa7307657 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "83d08d0a07c8a86f93a4c3207e6a9839f1ca3d2c",
+  "prompts": {},
+  "sessions": {
+    "s_30dea5da287288": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fe56cb87-94af-4941-ad7b-c261ecfd0d6e",
+        "model": "unknown"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    },
+    "s_c4f25e7c3c0006": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e202c47e-93fc-4364-8f3f-446e4bd0838a",
+        "model": "unknown"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}

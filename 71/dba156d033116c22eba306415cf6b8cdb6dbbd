@@ -1,0 +1,19 @@
+.github/workflows/code-npm_node-publish-release-and-snapshot.yml
+  s_c4f25e7c3c0006::t_8e59592b297cdb 201-217,335-340,346,421-450,516-532,551,555-556
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "71dba156d033116c22eba306415cf6b8cdb6dbbd",
+  "prompts": {},
+  "sessions": {
+    "s_c4f25e7c3c0006": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e202c47e-93fc-4364-8f3f-446e4bd0838a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}

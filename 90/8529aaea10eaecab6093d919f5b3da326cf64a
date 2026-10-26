@@ -1,0 +1,23 @@
+.github/workflows/pr-verify.yml
+  s_e4b2d740477965::t_ae1336ca6f8f5f 21,34,47
+.github/workflows/code-npm_node-sonarcloud-analysis.yml
+  s_e4b2d740477965::t_64811b85bbd638 37-41
+.github/workflows/push-verify.yml
+  s_e4b2d740477965::t_97f93e4f2b1a1b 8-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "908529aaea10eaecab6093d919f5b3da326cf64a",
+  "prompts": {},
+  "sessions": {
+    "s_e4b2d740477965": {
+      "agent_id": {
+        "tool": "github-copilot-cli",
+        "id": "6e26aea4-6cb5-4268-a553-ea96277bd715",
+        "model": "gpt-5.5"
+      },
+      "human_author": "amagan <andreamr@ext.zara.com>"
+    }
+  }
+}

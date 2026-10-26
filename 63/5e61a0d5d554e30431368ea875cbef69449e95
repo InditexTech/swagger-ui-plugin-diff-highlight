@@ -1,0 +1,19 @@
+.github/dependabot.yml
+  s_6d4d485ab386dd::t_bb35058cf3d9b1 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "635e61a0d5d554e30431368ea875cbef69449e95",
+  "prompts": {},
+  "sessions": {
+    "s_6d4d485ab386dd": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_6d4d485ab386dd",
+        "model": "unknown"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}

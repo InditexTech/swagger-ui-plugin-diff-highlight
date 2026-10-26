@@ -1,0 +1,23 @@
+.prettierignore
+  s_39c0413160b2ff::t_a5729d9b238916 5-11
+REUSE.toml
+  s_39c0413160b2ff::t_fc7b0be3225a1b 16-18
+package.json
+  s_39c0413160b2ff::t_22e2e6c2c6ed2d 65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "61bd49d0ad68ea6ad08da041d8c5671b3e6a431a",
+  "prompts": {},
+  "sessions": {
+    "s_39c0413160b2ff": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_39c0413160b2ff",
+        "model": "unknown"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}

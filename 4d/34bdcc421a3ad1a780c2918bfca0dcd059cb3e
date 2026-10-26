@@ -1,0 +1,19 @@
+.github/workflows/code-npm_node-publish-release-and-snapshot.yml
+  s_074722476d1666::t_4741b8c67041b5 89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "4d34bdcc421a3ad1a780c2918bfca0dcd059cb3e",
+  "prompts": {},
+  "sessions": {
+    "s_074722476d1666": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "cbd96b00-3edf-4b2c-99e6-d74aa1d56d00",
+        "model": "copilot/claude-opus-4.8"
+      },
+      "human_author": "amagan <andreamr@ext.zara.com>"
+    }
+  }
+}
