@@ -74,7 +74,7 @@
     "@eslint/js": "^9.39.4",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
-    "@vitest/coverage-v8": "^5.0.1",
+    "@vitest/coverage-v8": "^5.0.3",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.37.5",
@@ -88,7 +88,7 @@
     "swagger-ui-react": "^5.32.14",
     "tsup": "^9.0.0",
     "typescript-eslint": "^8.62.1",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.3"
   },
   "overrides": {
     "esbuild": "^0.28.1",
