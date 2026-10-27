@@ -627,9 +627,11 @@ jobs:
               echo "::error title=Invalid release tag::Tag '$primary_tag' does not yield a valid version and tag prefix."
               exit 1
             fi
-            echo "RELEASE_VERSION=$primary_version" >> "$GITHUB_ENV"
-            echo "CHANGELOG_TAG_PREFIX=$tag_prefix" >> "$GITHUB_ENV"
-            echo "RELEASE_BUMP=$RELEASE_BUMP" >> "$GITHUB_ENV"
+            {
+              echo "RELEASE_VERSION=$primary_version"
+              echo "CHANGELOG_TAG_PREFIX=$tag_prefix"
+              echo "RELEASE_BUMP=$RELEASE_BUMP"
+            } >> "$GITHUB_ENV"
           else
             write_records
             releases="$(jq -cs . "$records_file")"
@@ -809,9 +811,11 @@ jobs:
             echo "::error title=Invalid release tag::Tag '$primary_tag' does not yield a valid version and tag prefix."
             exit 1
           fi
-          echo "RELEASE_BUMP=$release_bump" >> "$GITHUB_ENV"
-          echo "RELEASE_VERSION=$primary_version" >> "$GITHUB_ENV"
-          echo "CHANGELOG_TAG_PREFIX=$tag_prefix" >> "$GITHUB_ENV"
+          {
+            echo "RELEASE_BUMP=$release_bump"
+            echo "RELEASE_VERSION=$primary_version"
+            echo "CHANGELOG_TAG_PREFIX=$tag_prefix"
+          } >> "$GITHUB_ENV"
 
           {
             echo "expected_ref=refs/heads/$BASELINE_BRANCH"
