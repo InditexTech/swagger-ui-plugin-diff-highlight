@@ -94,7 +94,8 @@
     "esbuild": "^0.28.1",
     "follow-redirects": "^1.16.2",
     "js-yaml": "^4.3.2",
-    "source-map-js": "^1.2.2"
+    "source-map-js": "^1.2.2",
+    "vite": "^8.3.3"
   },
   "publishConfig": {
     "access": "public"
