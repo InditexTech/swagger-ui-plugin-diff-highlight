@@ -616,12 +616,19 @@ jobs:
             fi
 
             primary_version="$(jq -r '.[0].version' <<< "$releases")"
-            echo "RELEASE_VERSION=$primary_version" >> "$GITHUB_ENV"
             # CHANGELOG links must name real tags: independent workspaces tag
             # <member>-<version>, so the prefix is the primary tag minus its
             # version (empty for single and locked-step releases).
             primary_tag="$(jq -r '.[0].tag' <<< "$releases")"
-            echo "CHANGELOG_TAG_PREFIX=${primary_tag%"$primary_version"}" >> "$GITHUB_ENV"
+            tag_prefix="${primary_tag%"$primary_version"}"
+            # Release-derived values are untrusted: reject anything that could inject env entries.
+            if [[ ! "$primary_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+.][0-9A-Za-z.-]+)?$ ]] \
+              || [[ ! "$tag_prefix" =~ ^[A-Za-z0-9._@/-]*$ ]]; then
+              echo "::error title=Invalid release tag::Tag '$primary_tag' does not yield a valid version and tag prefix."
+              exit 1
+            fi
+            echo "RELEASE_VERSION=$primary_version" >> "$GITHUB_ENV"
+            echo "CHANGELOG_TAG_PREFIX=$tag_prefix" >> "$GITHUB_ENV"
             echo "RELEASE_BUMP=$RELEASE_BUMP" >> "$GITHUB_ENV"
           else
             write_records
@@ -791,13 +798,20 @@ jobs:
             changelog_pending="true"
           fi
 
-          echo "RELEASE_BUMP=$release_bump" >> "$GITHUB_ENV"
-          echo "RELEASE_VERSION=$primary_version" >> "$GITHUB_ENV"
           # CHANGELOG links must name real tags: independent workspaces tag
           # <member>-<version>, so the prefix is the primary tag minus its
           # version (empty for single and locked-step releases).
           primary_tag="$(jq -r '.[0].tag' <<< "$releases")"
-          echo "CHANGELOG_TAG_PREFIX=${primary_tag%"$primary_version"}" >> "$GITHUB_ENV"
+          tag_prefix="${primary_tag%"$primary_version"}"
+          # Tag-derived values are untrusted: reject anything that could inject env entries.
+          if [[ ! "$primary_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+.][0-9A-Za-z.-]+)?$ ]] \
+            || [[ ! "$tag_prefix" =~ ^[A-Za-z0-9._@/-]*$ ]]; then
+            echo "::error title=Invalid release tag::Tag '$primary_tag' does not yield a valid version and tag prefix."
+            exit 1
+          fi
+          echo "RELEASE_BUMP=$release_bump" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=$primary_version" >> "$GITHUB_ENV"
+          echo "CHANGELOG_TAG_PREFIX=$tag_prefix" >> "$GITHUB_ENV"
 
           {
             echo "expected_ref=refs/heads/$BASELINE_BRANCH"
