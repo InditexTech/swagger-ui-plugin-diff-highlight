@@ -1,0 +1,14 @@
+.github/dependabot.yml
+  h_e2c7967ec6cbec 11-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "cd7eab5d185a94ea4781c823743d442440848e5f",
+  "prompts": {},
+  "humans": {
+    "h_e2c7967ec6cbec": {
+      "author": "Bruno Luis Goncalves Pedro <brunolgp@inditex.com>"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+README.md
+  s_ec673e77b879ed::t_bb7aa035695050 275-276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "0f70ed2735fbe08c17df72a8966f7bbab3857446",
+  "prompts": {},
+  "sessions": {
+    "s_ec673e77b879ed": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "b685412e-8fe0-4f85-87ac-700e8a2d3d11",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "amagan <andreamr@ext.zara.com>"
+    }
+  }
+}

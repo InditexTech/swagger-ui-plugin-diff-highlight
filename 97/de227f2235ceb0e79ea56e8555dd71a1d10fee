@@ -1,0 +1,19 @@
+package.json
+  s_7f2d3e20775175::t_4e0673b567ad57 65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "97de227f2235ceb0e79ea56e8555dd71a1d10fee",
+  "prompts": {},
+  "sessions": {
+    "s_7f2d3e20775175": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_7f2d3e20775175",
+        "model": "unknown"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}

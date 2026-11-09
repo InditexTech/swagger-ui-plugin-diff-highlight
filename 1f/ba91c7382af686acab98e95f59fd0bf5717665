@@ -1,0 +1,23 @@
+example/package-lock.json
+  s_7fe1e61ffbba67::t_b7a26ff8508b25 29,43
+package-lock.json
+  s_7fe1e61ffbba67::t_894a1c5a87e296 15,29,3206-3208,3213-3219,3225-3226,3258-3260,3265,3267,3273,3286-3288,3296-3298,3868-3870,6967-6969,8221-8223,8546-8548,9146-9148,9153-9154,9157-9158,9160-9162,9164,9179-9180,9182-9184,9229-9231,9400-9402,9409
+package.json
+  s_7fe1e61ffbba67::t_77cd6d3c4f5430 77,91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "1fba91c7382af686acab98e95f59fd0bf5717665",
+  "prompts": {},
+  "sessions": {
+    "s_7fe1e61ffbba67": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "31ff1160-5e3d-4826-8785-be0979b8eae9",
+        "model": "copilot/claude-sonnet-5.5"
+      },
+      "human_author": "Bruno Luis Goncalves Pedro <brunolgp@inditex.com>"
+    }
+  }
+}

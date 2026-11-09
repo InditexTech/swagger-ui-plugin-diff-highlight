@@ -1,0 +1,27 @@
+.github/workflows/code-npm_node-publish-release-and-snapshot.yml
+  s_074722476d1666::t_4741b8c67041b5 335
+.github/workflows/code-PR_verify-fallback.yml
+  s_074722476d1666::t_1e9381c7c77e87 14
+.github/workflows/code-npm_node-PR_verify.yml
+  s_074722476d1666::t_3942d9d08d5e44 31-32
+.github/workflows/code-npm_node-sonarcloud-analysis.yml
+  s_074722476d1666::t_5fb33c5b095be3 123
+.github/workflows/code-release_preview.yml
+  s_074722476d1666::t_b3eaecc16191b6 22-24,48-50,139-140,155-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "bff4ef31245cabeaa046fb862cb15cabe71d7c26",
+  "prompts": {},
+  "sessions": {
+    "s_074722476d1666": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "cbd96b00-3edf-4b2c-99e6-d74aa1d56d00",
+        "model": "copilot/claude-opus-4.8"
+      },
+      "human_author": "amagan <andreamr@ext.zara.com>"
+    }
+  }
+}

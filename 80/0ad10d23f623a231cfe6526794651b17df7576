@@ -1,0 +1,19 @@
+.github/workflows/code-npm_node-release-core.yml
+  s_7fe1e61ffbba67::t_ae529577409cce 623-631,805-814
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "800ad10d23f623a231cfe6526794651b17df7576",
+  "prompts": {},
+  "sessions": {
+    "s_7fe1e61ffbba67": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "31ff1160-5e3d-4826-8785-be0979b8eae9",
+        "model": "copilot/claude-sonnet-5.5"
+      },
+      "human_author": "Bruno Luis Goncalves Pedro <brunolgp@inditex.com>"
+    }
+  }
+}

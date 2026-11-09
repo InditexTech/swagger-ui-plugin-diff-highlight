@@ -1,0 +1,21 @@
+example/package.json
+  s_7fe1e61ffbba67::t_2b65f774eed2c8 18-20
+package.json
+  s_7fe1e61ffbba67::t_7af3708397b29f 95-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "eaef1acbea2f1ff99f6e0d8b4b9807f3e3fb06a2",
+  "prompts": {},
+  "sessions": {
+    "s_7fe1e61ffbba67": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "31ff1160-5e3d-4826-8785-be0979b8eae9",
+        "model": "unknown"
+      },
+      "human_author": "Bruno Luis Goncalves Pedro <brunolgp@inditex.com>"
+    }
+  }
+}

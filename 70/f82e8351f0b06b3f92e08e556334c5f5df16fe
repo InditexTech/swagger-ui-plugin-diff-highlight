@@ -1,0 +1,60 @@
+.github/inditextech-ci-sync-manifest.json
+  h_e2c7967ec6cbec 20,31-32,34-35,60
+.github/workflows/code-npm_node-publish-release-and-snapshot.yml
+  h_e2c7967ec6cbec 302,357,534,576,658,747,872
+.github/workflows/code-npm_node-release-core.yml
+  h_e2c7967ec6cbec 238,287-402,409,411-412,414,474-475,477-480,484-511,515-533,538-539,625,631,688,1357,1396
+.github/workflows/code-release_preview.yml
+  h_e2c7967ec6cbec 21-22,39-41,43-65,70,92-93,130-138,140,144-155,157-161,165-171,173-177,179-197,203-261,269,272,274,279-450
+.github/workflows/codeql.yml
+  h_e2c7967ec6cbec 96,107
+CHANGELOG.md
+  h_e2c7967ec6cbec 16-24
+README.md
+  h_e2c7967ec6cbec 233,235-241,243,246
+eslint.config.mjs
+  h_e2c7967ec6cbec 3,11,13
+example/src/components/ReportModal.jsx
+  h_e2c7967ec6cbec 3,24-25,27-35,40-41,44,46,105-112
+example/src/demo.css
+  h_e2c7967ec6cbec 74-81,87-104,106-107,217
+example/src/specs/diffReport.js
+  h_e2c7967ec6cbec 67-87
+example/src/specs/diffSpec.json
+  h_e2c7967ec6cbec 142-157,161,180-186
+example/src/specs/latestSpec.json
+  h_e2c7967ec6cbec 107-111,115,118-125
+package-lock.json
+  h_e2c7967ec6cbec 3,9,15,21,361-370,2872-2874,2879-2882,2895,2901-2903,2911-2913,2917-2920,2936-2938,2942-2943,2958-2960,2964-2965,2976-2978,2993-2995,2999-3001,3018-3020,3032-3034,3038-3041,3112-3114,3119-3121,3136-3138,3142,3166-3217,3525-3543,5185-5187,5446-5448,6602-6613,8454-8456,8564-8573,8920-8922,8926-8929
+package.json
+  h_e2c7967ec6cbec 77,83
+src/DiffHighlightPlugin.jsx
+  h_e2c7967ec6cbec 3-16,52-141,178-196,198-245,248-288,290-297,299-304,306-322,324-367,370
+src/__tests__/DiffHighlightPlugin.test.jsx
+  h_e2c7967ec6cbec 15,17,19-20,31,34,96-101,106-111
+src/__tests__/SwaggerUI.integration.test.jsx
+  h_e2c7967ec6cbec 1-385
+src/__tests__/exampleApp.test.jsx
+  h_e2c7967ec6cbec 1-68
+src/__tests__/exampleFixtures.test.js
+  h_e2c7967ec6cbec 1-65
+src/__tests__/helpers.test.jsx
+  h_e2c7967ec6cbec 8,67-156
+src/__tests__/schemaAncestors.test.jsx
+  h_e2c7967ec6cbec 1-127
+src/diff.css
+  h_e2c7967ec6cbec 6-12,16-19,23-26,30-31,60-80,83-88,94-97,100-103,106-108
+vitest.config.ts
+  h_e2c7967ec6cbec 3,6-8,10-25,27-29,34-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "70f82e8351f0b06b3f92e08e556334c5f5df16fe",
+  "prompts": {},
+  "humans": {
+    "h_e2c7967ec6cbec": {
+      "author": "Bruno Luis Goncalves Pedro <brunolgp@inditex.com>"
+    }
+  }
+}
