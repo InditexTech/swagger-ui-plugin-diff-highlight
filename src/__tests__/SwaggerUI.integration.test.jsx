@@ -401,8 +401,10 @@ it("shows a maxLength change on an updated string schema", async () => {
   expect(within(outer).getByText("Username")).toBeInTheDocument();
   expect(model.querySelector(".prop-type")).toHaveTextContent("string");
   expect(model).toHaveTextContent("maxLength");
-  expect(within(model).getByText("100")).toHaveClass("diff-deleted");
-  expect(within(model).getByText("200")).toHaveClass("diff-added");
+  const changes = model.querySelector(".diff-schema-changes");
+  expect(changes).toHaveTextContent("maxLength");
+  expect(within(changes).getByText("100")).toHaveClass("diff-updated-old");
+  expect(within(changes).getByText("200")).toHaveClass("diff-updated-new");
 });
 
 it("keeps the composed Shelf body, toggle and nested marks when it is updated", async () => {
@@ -434,7 +436,14 @@ it("keeps the composed Shelf body, toggle and nested marks when it is updated", 
       "x-diff-new": { type: "integer" },
     },
   });
-  renderSchemas({ Shelf: changedSchema(before, marked) });
+  renderSchemas({
+    Shelf: {
+      ...marked,
+      "x-diff-status": "updated",
+      "x-diff-original": before,
+      "x-diff-new": after,
+    },
+  });
   const outer = await screen.findByRole("button", { name: /Shelf/ });
   fireEvent.click(outer);
   const model = document.querySelector('[data-name="Shelf"]');
@@ -443,16 +452,25 @@ it("keeps the composed Shelf body, toggle and nested marks when it is updated", 
   );
   expect(outer).toHaveAttribute("aria-expanded", "true");
   expect(within(outer).getByText("Shelf")).toBeInTheDocument();
+  const changes = model.querySelector(".diff-schema-changes");
   expect(
-    within(model).getByText("Where books are shelved")
-  ).toBeInTheDocument();
+    within(model)
+      .getAllByText("Where books are shelved")
+      .some((node) => !changes.contains(node))
+  ).toBe(true);
   expect(within(model).getByText("id")).toBeInTheDocument();
   expect(model.querySelector(".diff-added")).toHaveTextContent("label");
   expect(model.querySelector(".diff-deleted")).toHaveTextContent("legacyCode");
-  expect(within(model).getByText("integer")).toHaveClass("diff-updated-new");
   expect(
-    within(model).getByText("string", { selector: ".diff-updated-old" })
-  ).toBeInTheDocument();
+    within(model).getAllByText("integer", { selector: ".diff-updated-new" })
+  ).not.toHaveLength(0);
+  expect(
+    within(model).getAllByText("string", { selector: ".diff-updated-old" })
+  ).not.toHaveLength(0);
+  expect(changes).toHaveTextContent("description");
+  expect(within(changes).getByText("Where books sit")).toHaveClass(
+    "diff-updated-old"
+  );
   fireEvent.click(outer);
   expect(outer).toHaveAttribute("aria-expanded", "false");
 });
