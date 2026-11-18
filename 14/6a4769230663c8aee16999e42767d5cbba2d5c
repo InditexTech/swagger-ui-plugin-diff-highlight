@@ -1,0 +1,27 @@
+example/src/specs/diffReport.js
+  s_7df19e73d34796::t_8d27bf944d3ff2 68-89
+example/src/specs/diffSpec.json
+  s_7df19e73d34796::t_598d752121b3be 103-109
+example/src/specs/latestSpec.json
+  s_7df19e73d34796::t_399e6766d8eccf 92-98
+src/__tests__/exampleApp.test.jsx
+  s_7df19e73d34796::t_466b2c21e86e9c 34
+src/__tests__/exampleFixtures.test.js
+  s_7df19e73d34796::t_cfe91e0017b05a 77-89,91-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "146a4769230663c8aee16999e42767d5cbba2d5c",
+  "prompts": {},
+  "sessions": {
+    "s_7df19e73d34796": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e117bcd1cffeY2CczkCj3H62hV",
+        "model": "claude-sonnet-5.5"
+      },
+      "human_author": "Airam Rguez <airamrr@ext.inditex.com>"
+    }
+  }
+}
