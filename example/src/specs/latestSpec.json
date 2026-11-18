@@ -113,7 +113,7 @@
         "type": "object",
         "properties": {
           "role": { "$ref": "#/components/schemas/RoleEnum" },
-          "username": { "type": "string" },
+          "username": { "type": "string", "maxLength": 200 },
           "email": { "type": "string", "format": "email" },
           "timeout": { "type": "integer" },
           "preferences": {
@@ -124,6 +124,20 @@
             }
           }
         }
+      },
+      "Shelf": {
+        "title": "Shelf",
+        "description": "Where books are shelved",
+        "allOf": [
+          { "$ref": "#/components/schemas/User" },
+          {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "capacity": { "type": "integer" }
+            }
+          }
+        ]
       },
       "Token": {
         "type": "object",

@@ -63,3 +63,16 @@ describe("User API demo fixtures", () => {
     expect(JSON.stringify(report)).not.toContain("EnvironmentEnum");
   });
 });
+
+describe("Bookshop-style schema demo fixtures", () => {
+  it("marks the username maxLength change and keeps Shelf consistent in both modes", () => {
+    const username = diffSpec.components.schemas.User.properties.username;
+    expect(username["x-diff-original"].maxLength).toBe(100);
+    expect(username["x-diff-new"]).toEqual(
+      latestSpec.components.schemas.User.properties.username
+    );
+    const shelf = diffSpec.components.schemas.Shelf;
+    expect(shelf["x-diff-status"]).toBe("updated");
+    expect(shelf["x-diff-new"]).toEqual(latestSpec.components.schemas.Shelf);
+  });
+});

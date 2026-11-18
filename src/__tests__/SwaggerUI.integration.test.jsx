@@ -383,3 +383,76 @@ it("highlights an enum referenced by an object property without changing its sib
   expect(sibling).toHaveTextContent("[ test, qa ]");
   expect(sibling.querySelector('[class^="diff-"]')).toBeNull();
 });
+
+it("shows a maxLength change on an updated string schema", async () => {
+  renderSchemas({
+    Username: {
+      ...changedSchema(
+        { type: "string", maxLength: 100 },
+        { type: "string", maxLength: 200 }
+      ),
+      title: "Username",
+    },
+  });
+  const outer = await screen.findByRole("button", { name: /Username/ });
+  fireEvent.click(outer);
+  const model = outer.closest(".model-box") || outer.closest(".model");
+  expect(outer).toHaveAttribute("aria-expanded", "true");
+  expect(within(outer).getByText("Username")).toBeInTheDocument();
+  expect(model.querySelector(".prop-type")).toHaveTextContent("string");
+  expect(model).toHaveTextContent("maxLength");
+  expect(within(model).getByText("100")).toHaveClass("diff-deleted");
+  expect(within(model).getByText("200")).toHaveClass("diff-added");
+});
+
+it("keeps the composed Shelf body, toggle and nested marks when it is updated", async () => {
+  const shelf = (description, extra = {}) => ({
+    title: "Shelf",
+    description,
+    allOf: [
+      { type: "object", properties: { id: { type: "string" } } },
+      {
+        type: "object",
+        properties: { label: { type: "string" }, ...extra },
+      },
+    ],
+  });
+  const before = shelf("Where books sit", {
+    legacyCode: { type: "string" },
+    capacity: { type: "string" },
+  });
+  const after = shelf("Where books are shelved", {
+    capacity: { type: "integer" },
+  });
+  const marked = shelf("Where books are shelved", {
+    label: { type: "string", "x-diff-status": "added" },
+    legacyCode: { type: "string", "x-diff-status": "deleted" },
+    capacity: {
+      type: "integer",
+      "x-diff-status": "updated",
+      "x-diff-original": { type: "string" },
+      "x-diff-new": { type: "integer" },
+    },
+  });
+  renderSchemas({ Shelf: changedSchema(before, marked) });
+  const outer = await screen.findByRole("button", { name: /Shelf/ });
+  fireEvent.click(outer);
+  const model = document.querySelector('[data-name="Shelf"]');
+  await waitFor(() =>
+    expect(model.querySelector(".property-row")).toBeInTheDocument()
+  );
+  expect(outer).toHaveAttribute("aria-expanded", "true");
+  expect(within(outer).getByText("Shelf")).toBeInTheDocument();
+  expect(
+    within(model).getByText("Where books are shelved")
+  ).toBeInTheDocument();
+  expect(within(model).getByText("id")).toBeInTheDocument();
+  expect(model.querySelector(".diff-added")).toHaveTextContent("label");
+  expect(model.querySelector(".diff-deleted")).toHaveTextContent("legacyCode");
+  expect(within(model).getByText("integer")).toHaveClass("diff-updated-new");
+  expect(
+    within(model).getByText("string", { selector: ".diff-updated-old" })
+  ).toBeInTheDocument();
+  fireEvent.click(outer);
+  expect(outer).toHaveAttribute("aria-expanded", "false");
+});
