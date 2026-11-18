@@ -31,7 +31,7 @@ it("shows the report totals and stays open on clicks inside it", async () => {
   const dialog = await openReport();
   expect(dialog).toHaveAttribute("open");
   expect(within(dialog).getByText("added").parentElement).toHaveTextContent(
-    "6 added"
+    "7 added"
   );
   fireEvent.click(within(dialog).getByRole("heading", { level: 2 }));
   expect(screen.getByRole("dialog")).toBe(dialog);

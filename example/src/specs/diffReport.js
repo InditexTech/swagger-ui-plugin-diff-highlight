@@ -65,6 +65,28 @@ const changesReport = {
           detail: "type: string → integer",
         },
         { change: "added", label: '"preferences.language"', detail: "string" },
+        {
+          change: "changed",
+          label: '"username"',
+          detail: "maxLength: 100 → 200",
+        },
+      ],
+    },
+    {
+      title: "Shelf · Properties",
+      entries: [
+        {
+          change: "changed",
+          label: "description",
+          detail: "Where books sit → Where books are shelved",
+        },
+        { change: "added", label: '"label"', detail: "string" },
+        { change: "removed", label: '"legacyCode"', detail: "string" },
+        {
+          change: "changed",
+          label: '"capacity"',
+          detail: "type: string → integer",
+        },
       ],
     },
     {

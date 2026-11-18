@@ -74,5 +74,32 @@ describe("Bookshop-style schema demo fixtures", () => {
     const shelf = diffSpec.components.schemas.Shelf;
     expect(shelf["x-diff-status"]).toBe("updated");
     expect(shelf["x-diff-new"]).toEqual(latestSpec.components.schemas.Shelf);
+    const entries = (title) =>
+      report.groups.find((group) => group.title === title).entries;
+    expect(entries("User · Properties")).toContainEqual({
+      change: "changed",
+      label: '"username"',
+      detail: "maxLength: 100 → 200",
+    });
+    expect(entries("Shelf · Properties").map((entry) => entry.label)).toEqual([
+      "description",
+      '"label"',
+      '"legacyCode"',
+      '"capacity"',
+    ]);
   });
+
+  it.each([
+    ["clean", latestSpec],
+    ["diff", diffSpec],
+  ])(
+    "sends a User request body to the token operation in %s mode",
+    (_, spec) => {
+      const schema =
+        spec.paths["/users/{id}/tokens"].post.requestBody.content[
+          "application/json"
+        ].schema;
+      expect(schema).toEqual({ $ref: "#/components/schemas/User" });
+    }
+  );
 });
