@@ -89,6 +89,31 @@ describe("Bookshop-style schema demo fixtures", () => {
     ]);
   });
 
+  it("keeps the createdAt format-only change consistent across fixtures and report", () => {
+    const createdAt = diffSpec.components.schemas.User.properties.createdAt;
+    expect(createdAt).toMatchObject({
+      type: "string",
+      format: "date-time",
+      "x-diff-status": "updated",
+      "x-diff-original": { type: "string", format: "date" },
+    });
+    expect(createdAt["x-diff-new"]).toEqual(
+      latestSpec.components.schemas.User.properties.createdAt
+    );
+    expect(latestSpec.components.schemas.User.properties.createdAt).toEqual({
+      type: "string",
+      format: "date-time",
+    });
+    const entries = report.groups.find(
+      (group) => group.title === "User · Properties"
+    ).entries;
+    expect(entries).toContainEqual({
+      change: "changed",
+      label: '"createdAt"',
+      detail: "format: date → date-time",
+    });
+  });
+
   it.each([
     ["clean", latestSpec],
     ["diff", diffSpec],

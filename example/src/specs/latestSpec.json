@@ -122,6 +122,7 @@
           "role": { "$ref": "#/components/schemas/RoleEnum" },
           "username": { "type": "string", "maxLength": 200 },
           "email": { "type": "string", "format": "email" },
+          "createdAt": { "type": "string", "format": "date-time" },
           "timeout": { "type": "integer" },
           "preferences": {
             "type": "object",

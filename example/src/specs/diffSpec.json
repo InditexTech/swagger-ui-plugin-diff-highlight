@@ -178,6 +178,13 @@
             "format": "email",
             "x-diff-status": "added"
           },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "x-diff-status": "updated",
+            "x-diff-original": { "type": "string", "format": "date" },
+            "x-diff-new": { "type": "string", "format": "date-time" }
+          },
           "old_token": {
             "type": "string",
             "x-diff-status": "deleted"

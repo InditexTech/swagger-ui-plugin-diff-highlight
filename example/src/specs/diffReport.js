@@ -61,6 +61,11 @@ const changesReport = {
         { change: "removed", label: '"old_token"', detail: "string" },
         {
           change: "changed",
+          label: '"createdAt"',
+          detail: "format: date → date-time",
+        },
+        {
+          change: "changed",
           label: '"timeout"',
           detail: "type: string → integer",
         },

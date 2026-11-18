@@ -405,6 +405,36 @@ it("shows a maxLength change on an updated string schema", async () => {
   expect(within(changes).getByText("200")).toHaveClass("diff-updated-new");
 });
 
+it("shows a format-only change on an object property as one type transition", async () => {
+  renderSchemas({
+    User: {
+      type: "object",
+      properties: {
+        createdAt: changedSchema(
+          { type: "string", format: "date" },
+          { type: "string", format: "date-time" }
+        ),
+      },
+    },
+  });
+  const model = await openModel("User", ".property-row");
+  const row = [...model.querySelectorAll(".property-row")].find((node) =>
+    node.textContent.startsWith("createdAt")
+  );
+  const toggle = within(row).getByRole("button");
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(row.querySelector(".prop-type")).toHaveTextContent("string");
+  expect(row.querySelector(".prop-format")).toHaveTextContent("($date-time)");
+  expect(changeRows(row.querySelector(".diff-schema-changes"))).toEqual([
+    "type: string($date) → string($date-time)",
+  ]);
+  expect(row.querySelectorAll(".diff-schema-keyword")).toHaveLength(1);
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(row.querySelector(".diff-schema-changes")).toBeNull();
+});
+
 it("keeps the composed Shelf body, toggle and nested marks when it is updated", async () => {
   const shelf = (description, extra = {}) => ({
     title: "Shelf",
