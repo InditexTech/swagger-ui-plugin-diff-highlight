@@ -64,7 +64,7 @@ Then feed it an annotated spec. Anything without an annotation renders normally.
 
 #### Annotating your OpenAPI document
 
-Annotate any operation, parameter, response, or schema property with `x-diff-status`:
+Annotate any operation, parameter, response, or schema with `x-diff-status`:
 
 ```jsonc
 // An added parameter
@@ -106,13 +106,13 @@ Valid `x-diff-status` values: `added`, `deleted`, `updated`, `unchanged` (or sim
 
 ##### Where each key goes
 
-| Extension         | Where it lives                                                               | Notes                                            |
-| ----------------- | ---------------------------------------------------------------------------- | ------------------------------------------------ |
-| `x-diff-status`   | On an operation, a parameter object, a response object, or a schema property | Required on every element you want to mark       |
-| `x-diff-original` | On a schema property only                                                    | Only with `"updated"`; the **before** sub-schema |
-| `x-diff-new`      | On a schema property only                                                    | Only with `"updated"`; the **after** sub-schema  |
+| Extension         | Where it lives                                                      | Notes                                            |
+| ----------------- | ------------------------------------------------------------------- | ------------------------------------------------ |
+| `x-diff-status`   | On an operation, a parameter object, a response object, or a schema | Required on every element you want to mark       |
+| `x-diff-original` | On a schema, including a root or composed schema                    | Only with `"updated"`; the **before** sub-schema |
+| `x-diff-new`      | On a schema, including a root or composed schema                    | Only with `"updated"`; the **after** sub-schema  |
 
-All three keys are **sibling properties** of the element they annotate. `x-diff-original` / `x-diff-new` are only read for `"updated"` schemas — for added/deleted elements, `x-diff-status` alone is enough.
+All three keys are **sibling properties** of the element they annotate. `x-diff-original` / `x-diff-new` are only read for `"updated"` schemas. For added/deleted elements, `x-diff-status` alone is enough.
 
 ##### How an updated schema renders
 
@@ -124,7 +124,7 @@ The plugin compares the two snapshots keyword by keyword and lists each differen
 - Object and array keywords (`properties`, `items`, `allOf`, `required` and so on) show a compact `changed` marker instead of a dump. Their added, deleted and updated children keep their own marks in the native body.
 - Enum changes keep their dedicated view, and keyword changes are listed next to it.
 
-The rows live inside the schema's accordion, so they appear only while it is open. Without both snapshots the plugin shows the native schema and its status mark and adds no rows. It never invents a type or value that the spec does not carry. Extensions (`x-*`) are ignored.
+The rows live inside the schema's accordion, so they appear only while it is open. Keyword summaries require both snapshots. Non-enum updates without them keep their native content and status mark without a comparison. Extensions (`x-*`) are ignored. Enum comparisons retain their existing renderer. Include an explicit `type` in both enum snapshots so their type and format labels are meaningful.
 
 #### Generating the annotations automatically
 
@@ -132,11 +132,11 @@ You don't have to annotate by hand. Compute the diff between your **old** and **
 
 Whatever tool you use, the change types map onto `x-diff-status` the same way:
 
-| Diff-tool change type       | `x-diff-status` | Extra keys                                          |
-| --------------------------- | --------------- | --------------------------------------------------- |
-| added / new                 | `added`         | –                                                   |
-| removed / deleted / missing | `deleted`       | –                                                   |
-| changed / modified          | `updated`       | `x-diff-original`, `x-diff-new` (schema properties) |
+| Diff-tool change type       | `x-diff-status` | Extra keys                                |
+| --------------------------- | --------------- | ----------------------------------------- |
+| added / new                 | `added`         | –                                         |
+| removed / deleted / missing | `deleted`       | –                                         |
+| changed / modified          | `updated`       | `x-diff-original`, `x-diff-new` (schemas) |
 
 The three examples below convert real output from popular tools into the same annotated spec.
 
@@ -229,7 +229,7 @@ Modified: GET /users/{id}
     [Breaking] Body attribute modified: timeout
 ```
 
-A modified attribute type maps to an `updated` schema property. Supply the old and new types as sub-schemas:
+A modified attribute type maps to an `updated` schema. Supply the old and new types as sub-schemas:
 
 ```jsonc
 "timeout": {
