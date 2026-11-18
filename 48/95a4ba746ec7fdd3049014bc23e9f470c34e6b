@@ -1,0 +1,19 @@
+README.md
+  s_36b4f14d0406dc::t_300c933f20103e 67,109-113,115,127,135-139,232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "4895a4ba746ec7fdd3049014bc23e9f470c34e6b",
+  "prompts": {},
+  "sessions": {
+    "s_36b4f14d0406dc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e1196a002ffek0KxNRruSViA24",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Airam Rguez <airamrr@ext.inditex.com>"
+    }
+  }
+}
