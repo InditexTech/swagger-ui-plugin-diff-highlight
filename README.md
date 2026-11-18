@@ -24,6 +24,8 @@ When an API evolves from one version to the next, it is hard to see _what actual
 | `deleted` | red + strikethrough                                         |
 | `updated` | inline `old → new` (old in red strikethrough, new in green) |
 
+An updated schema keeps Swagger UI's native model, including its name, body, toggle and nested marks. The changed keywords are listed at the end of its accordion body.
+
 ## Getting Started
 
 ### Installation
@@ -89,7 +91,7 @@ Annotate any operation, parameter, response, or schema property with `x-diff-sta
 }
 ```
 
-For an **updated** schema property, also provide the before/after sub-schemas so the plugin can render `old → new`:
+For an **updated** schema, also provide the before/after sub-schemas so the plugin can render `old → new`. Any schema works, including composed ones (`allOf`, `anyOf`, `oneOf`) and root schemas under `components/schemas`:
 
 ```jsonc
 "timeout": {
@@ -110,7 +112,19 @@ Valid `x-diff-status` values: `added`, `deleted`, `updated`, `unchanged` (or sim
 | `x-diff-original` | On a schema property only                                                    | Only with `"updated"`; the **before** sub-schema |
 | `x-diff-new`      | On a schema property only                                                    | Only with `"updated"`; the **after** sub-schema  |
 
-All three keys are **sibling properties** of the element they annotate. `x-diff-original` / `x-diff-new` are only read for `"updated"` schema properties — for added/deleted elements, `x-diff-status` alone is enough.
+All three keys are **sibling properties** of the element they annotate. `x-diff-original` / `x-diff-new` are only read for `"updated"` schemas — for added/deleted elements, `x-diff-status` alone is enough.
+
+##### How an updated schema renders
+
+The plugin compares the two snapshots keyword by keyword and lists each difference after the native body:
+
+- A scalar keyword that changed shows `old → new`, for example `maxLength: 100 → 200`.
+- A scalar keyword that appeared or disappeared shows its value in green or red. Values such as `0`, `false` and `null` count as values.
+- `type` and `format` show as one row, for example `type: string → integer($int64)`.
+- Object and array keywords (`properties`, `items`, `allOf`, `required` and so on) show a compact `changed` marker instead of a dump. Their added, deleted and updated children keep their own marks in the native body.
+- Enum changes keep their dedicated view, and keyword changes are listed next to it.
+
+The rows live inside the schema's accordion, so they appear only while it is open. Without both snapshots the plugin shows the native schema and its status mark and adds no rows. It never invents a type or value that the spec does not carry. Extensions (`x-*`) are ignored.
 
 #### Generating the annotations automatically
 
@@ -237,7 +251,7 @@ The plugin uses Swagger UI's [`wrapComponents`](https://swagger-ui.github.io/swa
 | `operation`     | An endpoint / opblock                                       | The **unresolved** spec via `specSelectors`/`specPath`                  |
 | `parameterRow`  | A request parameter row                                     | `props.param` / `props.rawParam`                                        |
 | `response`      | A response row                                              | `props.response`                                                        |
-| `Model`         | A schema property                                           | `props.schema`                                                          |
+| `Model`         | A schema                                                    | `props.schema`                                                          |
 | `ModelCollapse` | A schema accordion that contains a change (`diff-ancestor`) | The enclosing `Model`'s schema, or the unresolved spec for root schemas |
 
 Three implementation details worth knowing:
