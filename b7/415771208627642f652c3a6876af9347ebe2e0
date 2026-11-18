@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_7df19e73d34796::t_4e5c7ff84849b6 16-23
+README.md
+  s_7df19e73d34796::t_757b885abaee08 27-28,94,115-127,254
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "b7415771208627642f652c3a6876af9347ebe2e0",
+  "prompts": {},
+  "sessions": {
+    "s_7df19e73d34796": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_e117bcd1cffeY2CczkCj3H62hV",
+        "model": "claude-sonnet-5.5"
+      },
+      "human_author": "Airam Rguez <airamrr@ext.inditex.com>"
+    }
+  }
+}
