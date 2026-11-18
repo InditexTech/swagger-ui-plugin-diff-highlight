@@ -394,13 +394,11 @@ it("shows a maxLength change on an updated string schema", async () => {
       title: "Username",
     },
   });
-  const outer = await screen.findByRole("button", { name: /Username/ });
-  fireEvent.click(outer);
-  const model = outer.closest(".model-box") || outer.closest(".model");
-  expect(outer).toHaveAttribute("aria-expanded", "true");
-  expect(within(outer).getByText("Username")).toBeInTheDocument();
+  const model = await openModel("Username");
+  const toggle = within(model).getByRole("button", { name: /Username/ });
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(within(toggle).getByText("Username")).toBeInTheDocument();
   expect(model.querySelector(".prop-type")).toHaveTextContent("string");
-  expect(model).toHaveTextContent("maxLength");
   const changes = model.querySelector(".diff-schema-changes");
   expect(changes).toHaveTextContent("maxLength");
   expect(within(changes).getByText("100")).toHaveClass("diff-updated-old");
@@ -444,14 +442,10 @@ it("keeps the composed Shelf body, toggle and nested marks when it is updated", 
       "x-diff-new": after,
     },
   });
-  const outer = await screen.findByRole("button", { name: /Shelf/ });
-  fireEvent.click(outer);
-  const model = document.querySelector('[data-name="Shelf"]');
-  await waitFor(() =>
-    expect(model.querySelector(".property-row")).toBeInTheDocument()
-  );
-  expect(outer).toHaveAttribute("aria-expanded", "true");
-  expect(within(outer).getByText("Shelf")).toBeInTheDocument();
+  const model = await openModel("Shelf", ".property-row");
+  const toggle = within(model).getByRole("button", { name: /Shelf/ });
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(within(toggle).getByText("Shelf")).toBeInTheDocument();
   const changes = model.querySelector(".diff-schema-changes");
   expect(
     within(model)
@@ -459,20 +453,26 @@ it("keeps the composed Shelf body, toggle and nested marks when it is updated", 
       .some((node) => !changes.contains(node))
   ).toBe(true);
   expect(within(model).getByText("id")).toBeInTheDocument();
-  expect(model.querySelector(".diff-added")).toHaveTextContent("label");
-  expect(model.querySelector(".diff-deleted")).toHaveTextContent("legacyCode");
   expect(
-    within(model).getAllByText("integer", { selector: ".diff-updated-new" })
-  ).not.toHaveLength(0);
+    model.querySelector(".diff-added").closest(".property-row")
+  ).toHaveTextContent("label");
   expect(
-    within(model).getAllByText("string", { selector: ".diff-updated-old" })
-  ).not.toHaveLength(0);
+    model.querySelector(".diff-deleted").closest(".property-row")
+  ).toHaveTextContent("legacyCode");
+  const capacity = [...model.querySelectorAll(".property-row")].find((row) =>
+    row.textContent.startsWith("capacity")
+  );
+  fireEvent.click(within(capacity).getByRole("button"));
+  expect(changeRows(capacity.querySelector(".diff-schema-changes"))).toEqual([
+    "type: string → integer",
+  ]);
   expect(changes).toHaveTextContent("description");
   expect(within(changes).getByText("Where books sit")).toHaveClass(
     "diff-updated-old"
   );
-  fireEvent.click(outer);
-  expect(outer).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(model.querySelector(".diff-schema-changes")).toBeNull();
 });
 
 const changeRows = (container) =>
@@ -594,7 +594,9 @@ it("summarises structural changes and keeps nested marks inside their own rows",
   const parentChanges = [...model.querySelectorAll(".diff-schema-changes")];
   expect(parentChanges).toHaveLength(1);
   expect(changeRows(parentChanges[0])).toEqual(["properties: changed"]);
-  expect(model.querySelector(".diff-added")).toHaveTextContent("name");
+  expect(
+    model.querySelector(".diff-added").closest(".property-row")
+  ).toHaveTextContent("name");
   const sizeRow = [...model.querySelectorAll(".property-row")].find((row) =>
     row.textContent.startsWith("size")
   );
@@ -613,7 +615,7 @@ it("summarises a changed array items schema compactly", async () => {
       { type: "array", items: { type: "integer", format: "int32" } }
     ),
   });
-  const model = await openModel("Tags");
+  const model = await openModel("Tags", ".diff-schema-changes");
   const changes = model.querySelector(".diff-schema-changes");
   expect(changeRows(changes)).toEqual(["items: changed"]);
   expect(changes).not.toHaveTextContent("int32");
@@ -678,7 +680,6 @@ it("shows keyword changes of a referenced schema in request and response schema 
       }
     ),
   });
-  await screen.findAllByText("listBooks");
   const operations = await waitFor(() => {
     const found = document.querySelectorAll(".opblock");
     expect(found).toHaveLength(2);
