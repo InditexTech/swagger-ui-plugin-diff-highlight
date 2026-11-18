@@ -696,3 +696,93 @@ it("shows keyword changes of a referenced schema in request and response schema 
     );
   }
 });
+
+const parcelLabel = (maxLength) => ({ type: "string", maxLength });
+const parcelSchema = changedSchema(
+  {
+    type: "object",
+    title: "Parcel",
+    properties: { label: parcelLabel(10) },
+  },
+  {
+    type: "object",
+    title: "Parcel",
+    properties: { label: parcelLabel(13) },
+  }
+);
+parcelSchema.properties.label = changedSchema(parcelLabel(10), parcelLabel(13));
+
+const expectParameterModelKeepsNativeBody = async () => {
+  await waitFor(() =>
+    expect(document.querySelector(".parameters .model-box")).toBeInTheDocument()
+  );
+  const model = document.querySelector(".parameters .model-box");
+  expect(within(model).getByText("label")).toBeInTheDocument();
+  expect(model.querySelector(".model-box-control")).toBeInTheDocument();
+  const labelRow = [...model.querySelectorAll(".property-row")].find((row) =>
+    row.textContent.startsWith("label")
+  );
+  const summaries = [...model.querySelectorAll(".diff-schema-changes")];
+  const [parent] = summaries.filter((el) => !labelRow.contains(el));
+  expect(changeRows(parent)).toEqual(["properties: changed"]);
+  expect(changeRows(labelRow.querySelector(".diff-schema-changes"))).toEqual([
+    "maxLength: 10 → 13",
+  ]);
+};
+
+it("keeps the native model and keyword changes for a Swagger 2 body parameter", async () => {
+  render(
+    <SwaggerUI
+      spec={{
+        swagger: "2.0",
+        info: { title: "Parcels", version: "1" },
+        paths: {
+          "/parcels": {
+            post: {
+              operationId: "addParcel",
+              consumes: ["application/json"],
+              parameters: [{ name: "body", in: "body", schema: parcelSchema }],
+              responses: { 201: { description: "created" } },
+            },
+          },
+        },
+      }}
+      plugins={[DiffHighlightPlugin]}
+      docExpansion="full"
+      defaultModelRendering="model"
+      defaultModelExpandDepth={2}
+    />
+  );
+  await expectParameterModelKeepsNativeBody();
+});
+
+it("keeps the native model and keyword changes for an OAS3 parameter with JSON content", async () => {
+  render(
+    <SwaggerUI
+      spec={{
+        openapi: "3.0.3",
+        info: { title: "Parcels", version: "1" },
+        paths: {
+          "/parcels": {
+            get: {
+              operationId: "findParcels",
+              parameters: [
+                {
+                  name: "filter",
+                  in: "query",
+                  content: { "application/json": { schema: parcelSchema } },
+                },
+              ],
+              responses: { 200: { description: "ok" } },
+            },
+          },
+        },
+      }}
+      plugins={[DiffHighlightPlugin]}
+      docExpansion="full"
+      defaultModelRendering="model"
+      defaultModelExpandDepth={2}
+    />
+  );
+  await expectParameterModelKeepsNativeBody();
+});
