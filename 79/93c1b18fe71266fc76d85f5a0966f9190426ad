@@ -1,0 +1,14 @@
+.tool-versions
+  h_e2c7967ec6cbec 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "7993c1b18fe71266fc76d85f5a0966f9190426ad",
+  "prompts": {},
+  "humans": {
+    "h_e2c7967ec6cbec": {
+      "author": "Bruno Luis Goncalves Pedro <brunolgp@inditex.com>"
+    }
+  }
+}
