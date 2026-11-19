@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       release_type:
-        description: Release type to use
+        description: Release type to use, or snapshot to publish a snapshot of the protected branch (main or develop, per development flow)
         required: true
         default: release-type/minor
         type: choice
@@ -18,19 +18,12 @@ on:
           - release-type/major
           - release-type/minor
           - release-type/patch
+          - snapshot
   pull_request:
     types: [closed]
     branches: [main, main-*]
   push:
     branches: [main, main-*, develop, develop-*]
-  issue_comment:
-    types: [created]
-
-# actionlint cache-call-unrestricted: this workflow is reachable from the
-# low-trust issue_comment trigger (release re-run gated to OWNER, MEMBER and
-# COLLABORATOR); cap its cache access explicitly. Declared at workflow level --
-# the job-level `cache-mode` key is not part of the workflow-call job schema.
-cache-mode: none
 
 permissions:
   contents: read
@@ -38,10 +31,10 @@ permissions:
 concurrency:
   group: >-
     ${{ format('code-npm-node-publish-{0}-{1}', github.repository,
-    (github.event_name == 'push' || github.event_name == 'issue_comment')
-    && format('snapshot-{0}', github.event.issue.number || github.ref)
+    (github.event_name == 'push' || inputs.release_type == 'snapshot')
+    && format('snapshot-{0}', github.ref)
     || format('release-{0}', github.event.pull_request.base.ref || github.ref_name)) }}
-  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'issue_comment' }}
+  cancel-in-progress: ${{ github.event_name == 'push' || inputs.release_type == 'snapshot' }}
 
 env:
   PROJECT_TYPE: ${{ vars.PROJECT_TYPE }}
@@ -51,45 +44,8 @@ env:
   SNAPSHOT_ARTIFACT: npm-snapshot-dist
 
 jobs:
-  authorize:
-    name: Authorize snapshot command
-    if: >-
-      github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request &&
-      startsWith(github.event.comment.body, '/publish-snapshot') &&
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      head_sha: ${{ steps.resolve.outputs.head_sha }}
-    steps:
-      - name: Resolve pull request head
-        id: resolve
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.issue.number }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          head="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '[.head.sha, .head.repo.full_name] | @tsv')"
-          head_sha="$(printf '%s' "$head" | cut -f1)"
-          head_repo="$(printf '%s' "$head" | cut -f2)"
-          if [[ -z "$head_sha" || "$head_sha" == "null" ]]; then
-            echo "::error title=Unresolved head::Could not resolve the pull request head commit." >&2
-            exit 1
-          fi
-          if [[ "$head_repo" != "$GITHUB_REPOSITORY" ]]; then
-            echo "::error title=Fork head rejected::Snapshot publishing only accepts branches of ${GITHUB_REPOSITORY}; refusing head from ${head_repo}." >&2
-            exit 1
-          fi
-          echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
-
   build:
     name: Build snapshot
-    needs: [authorize]
     if: >-
       !cancelled() &&
       (
@@ -100,7 +56,14 @@ jobs:
             (vars.DEVELOPMENT_FLOW == 'git-flow' && (github.ref_name == 'develop' || startsWith(github.ref_name, 'develop-')))
           )
         ) ||
-        (github.event_name == 'issue_comment' && needs.authorize.result == 'success')
+        (
+          github.event_name == 'workflow_dispatch' &&
+          inputs.release_type == 'snapshot' &&
+          (
+            (vars.DEVELOPMENT_FLOW == 'trunk-based-development' && github.ref == 'refs/heads/main') ||
+            (vars.DEVELOPMENT_FLOW == 'git-flow' && github.ref == 'refs/heads/develop')
+          )
+        )
       )
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -114,24 +77,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: >-
-            ${{
-              (github.event_name == 'issue_comment' && needs.authorize.outputs.head_sha) ||
-              github.sha
-            }}
-
-      - name: Betrayal check for comment-authorized snapshot
-        if: github.event_name == 'issue_comment'
-        shell: bash
-        run: |
-          set -euo pipefail
-          authorized="${{ needs.authorize.outputs.head_sha }}"
-          checked="$(git rev-parse HEAD)"
-          if [[ "$checked" != "$authorized" ]]; then
-            echo "::error title=Snapshot head race::The pull request advanced since the /publish-snapshot authorization (authorized $authorized, workspace $checked). Aborting before any build or publish."
-            exit 1
-          fi
-          echo "::notice title=Snapshot head verified::Checked-out commit matches the authorized snapshot head."
 
       - name: Plan snapshot
         id: plan
@@ -186,7 +131,6 @@ jobs:
         if: steps.plan.outputs.should_publish == 'true'
         working-directory: ${{ env.WORKING_DIRECTORY }}
         env:
-          PR_NUMBER: ${{ github.event.issue.number }}
           DIST_DIR: ${{ runner.temp }}/snapshot-dist
         shell: bash
         run: |
@@ -194,11 +138,7 @@ jobs:
 
           strip_snapshot() { printf '%s' "${1%-SNAPSHOT}"; }
           compute_snapshot() {
-            if [[ "$GITHUB_EVENT_NAME" == "issue_comment" ]]; then
-              printf '%s-PR%s-SNAPSHOT.%s' "$1" "$PR_NUMBER" "$GITHUB_RUN_NUMBER"
-            else
-              printf '%s-SNAPSHOT.%s.%s' "$1" "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_ATTEMPT"
-            fi
+            printf '%s-SNAPSHOT.%s.%s' "$1" "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_ATTEMPT"
           }
           member_dir() {
             printf '%s' "${1##*/}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
@@ -311,14 +251,8 @@ jobs:
   release-core:
     name: Prepare and Build Release
     if: >-
-      (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request') &&
-      (
-        github.event_name != 'issue_comment' ||
-        contains(
-          fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
-          github.event.comment.author_association
-        )
-      )
+      (github.event_name == 'workflow_dispatch' && inputs.release_type != 'snapshot') ||
+      github.event_name == 'pull_request'
     uses: ./.github/workflows/code-npm_node-release-core.yml
     with:
       release_type: ${{ inputs.release_type }}
