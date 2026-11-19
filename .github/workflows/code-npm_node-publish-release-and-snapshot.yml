@@ -44,10 +44,34 @@ env:
   SNAPSHOT_ARTIFACT: npm-snapshot-dist
 
 jobs:
+  check-dispatch-actor:
+    name: Check snapshot dispatch actor
+    if: github.event_name == 'workflow_dispatch' && inputs.release_type == 'snapshot'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require maintain or admin on the triggering actor
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.triggering_actor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          role="$(gh api "repos/${REPOSITORY}/collaborators/${ACTOR}/permission" --jq '.role_name' || true)"
+          if [[ "$role" != "maintain" && "$role" != "admin" ]]; then
+            echo "::error title=Snapshot dispatch denied::${ACTOR} has role '${role:-unknown}'; snapshot dispatch requires maintain or admin."
+            exit 1
+          fi
+
   build:
     name: Build snapshot
+    needs: [check-dispatch-actor]
     if: >-
       !cancelled() &&
+      (github.event_name != 'workflow_dispatch' || needs.check-dispatch-actor.result == 'success') &&
       (
         (
           github.event_name == 'push' &&
@@ -73,6 +97,21 @@ jobs:
       artifact_name: ${{ steps.pack.outputs.artifact_name }}
       should_publish: ${{ steps.plan.outputs.should_publish }}
     steps:
+      - name: Re-check dispatch actor (job reruns reuse earlier authorization)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.triggering_actor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          role="$(gh api "repos/${REPOSITORY}/collaborators/${ACTOR}/permission" --jq '.role_name' || true)"
+          if [[ "$role" != "maintain" && "$role" != "admin" ]]; then
+            echo "::error title=Snapshot dispatch denied::${ACTOR} has role '${role:-unknown}'; snapshot dispatch requires maintain or admin."
+            exit 1
+          fi
+
       - name: Check out snapshot candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -227,6 +266,21 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Re-check dispatch actor (job reruns reuse earlier authorization)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.triggering_actor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          role="$(gh api "repos/${REPOSITORY}/collaborators/${ACTOR}/permission" --jq '.role_name' || true)"
+          if [[ "$role" != "maintain" && "$role" != "admin" ]]; then
+            echo "::error title=Snapshot dispatch denied::${ACTOR} has role '${role:-unknown}'; snapshot dispatch requires maintain or admin."
+            exit 1
+          fi
+
       - name: Check out trusted publish ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
