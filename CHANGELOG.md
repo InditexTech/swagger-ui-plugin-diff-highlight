@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Updated schemas list their changed keywords (`maxLength: 100 → 200`, added or removed values, `changed` for nested structures) inside the native accordion
+
+### Fixed
+
+- Updated schemas, including composed `allOf` ones, no longer lose their name, body, toggle and nested diff marks ([#89](https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/issues/89))
+
 ## [0.3.0] - 2026-10-21
 
 ### Added

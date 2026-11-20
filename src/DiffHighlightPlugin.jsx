@@ -4,6 +4,12 @@ import React, { createContext, useContext, useMemo } from "react";
 
 const EnumDiffContext = createContext(null);
 
+/**
+ * The keyword changes of the nearest enclosing updated `Model`, for its first
+ * `ModelCollapse` to show. `null` when there is nothing to show.
+ */
+const UpdateDetailsContext = createContext(null);
+
 const enumValueKey = (value) =>
   JSON.stringify(value, (_, item) =>
     item && typeof item === "object" && !Array.isArray(item)
@@ -160,6 +166,89 @@ export const describeSchema = (schema) => {
   return format ? `${type}($${format})` : type;
 };
 
+const UpdatedValue = ({ before, after }) => (
+  <span className="diff-updated-inline">
+    <span className="diff-updated-old">{before}</span>
+    <span className="diff-updated-arrow"> → </span>
+    <span className="diff-updated-new">{after}</span>
+  </span>
+);
+
+const plain = (value) =>
+  value != null && typeof value.toJS === "function" ? value.toJS() : value;
+
+const isStructured = (value) => value != null && typeof value === "object";
+
+const scalarText = (value) =>
+  typeof value === "string" ? value : JSON.stringify(value);
+
+const typeLabel = (schema) =>
+  schema.get("type") ? describeSchema(schema) : undefined;
+
+const changeValue = (before, after) => {
+  if (isStructured(before) || isStructured(after)) {
+    return <span className="diff-schema-changed">changed</span>;
+  }
+  if (before === undefined) {
+    return <span className="diff-added">{scalarText(after)}</span>;
+  }
+  if (after === undefined) {
+    return <span className="diff-deleted">{scalarText(before)}</span>;
+  }
+  return <UpdatedValue before={scalarText(before)} after={scalarText(after)} />;
+};
+
+/**
+ * Lists the keywords that differ between the `x-diff-original` and
+ * `x-diff-new` snapshots of an updated schema. Extensions and `enum` are
+ * skipped. When `enumHandled`, the enum view already shows type and format,
+ * so those are skipped too. Object and array values are summarised as
+ * "changed". Returns `null` when either snapshot is missing or nothing differs.
+ *
+ * @param {object} original - The `x-diff-original` snapshot (Immutable Map).
+ * @param {object} updated - The `x-diff-new` snapshot (Immutable Map).
+ * @param {boolean} enumHandled - Whether the enum view shows type changes.
+ * @returns {React.ReactElement|null} The rows, or `null`.
+ */
+const schemaUpdateDetails = (original, updated, enumHandled) => {
+  if (!isMapLike(original) || !isMapLike(updated)) {
+    return null;
+  }
+  const typed =
+    !enumHandled && Boolean(typeLabel(original) || typeLabel(updated));
+  const skipped = (key) =>
+    key === "type" ||
+    key === "enum" ||
+    key === "$$ref" ||
+    key.startsWith("x-") ||
+    (key === "format" && (typed || enumHandled));
+  const keys = new Set([...original.keySeq(), ...updated.keySeq()]);
+  const entries = typed
+    ? [["type", typeLabel(original), typeLabel(updated)]]
+    : [];
+  for (const key of keys) {
+    if (!skipped(key)) {
+      entries.push([key, plain(original.get(key)), plain(updated.get(key))]);
+    }
+  }
+  const rows = entries.filter(
+    ([, before, after]) => enumValueKey(before) !== enumValueKey(after)
+  );
+  if (rows.length === 0) {
+    return null;
+  }
+  return (
+    <div className="diff-schema-changes">
+      {rows.map(([key, before, after]) => (
+        <div className="diff-schema-change" key={key}>
+          <span className="diff-schema-keyword">{key}</span>:{" "}
+          {changeValue(before, after)}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 /**
  * Plugin that highlights API changes inline based on `x-diff-*` extensions
  * present in the loaded "diff" OpenAPI document.
@@ -194,54 +283,36 @@ const DiffHighlightPlugin = () => ({
               : null,
           [enumChanged, original, updated, supplemental, getComponent]
         );
-
-        if (status === "updated" && !enumChanged) {
-          const originalType = describeSchema(original);
-          const updatedType = describeSchema(updated);
-          return (
-            <EnumDiffContext.Provider value={null}>
-              <span className="diff-updated-inline">
-                {originalType === updatedType ? (
-                  updatedType
-                ) : (
-                  <>
-                    <span className="diff-updated-old">{originalType}</span>
-                    <span className="diff-updated-arrow"> → </span>
-                    <span className="diff-updated-new">{updatedType}</span>
-                  </>
-                )}
-              </span>
-            </EnumDiffContext.Provider>
-          );
-        }
+        const updateDetails = useMemo(
+          () =>
+            status === "updated"
+              ? schemaUpdateDetails(original, updated, enumChanged)
+              : null,
+          [status, original, updated, enumChanged]
+        );
 
         const marked = containsChange(
           rawSchema,
           localRefResolver(specJsonOf(system))
         );
-
+        let schema = rawSchema;
         if (enumChanged) {
-          const schema = supplemental
+          schema = supplemental
             ? rawSchema
                 .remove("enum")
                 .remove("x-diff-status")
                 .remove("x-diff-original")
                 .remove("x-diff-new")
             : rawSchema.set("enum", updatedEnum || originalEnum);
-          return (
-            <ContainsChangeContext.Provider value={marked}>
-              <EnumDiffContext.Provider value={enumDiff}>
-                <Original {...props} schema={schema} />
-              </EnumDiffContext.Provider>
-            </ContainsChangeContext.Provider>
-          );
         }
 
         const model = (
           <ContainsChangeContext.Provider value={marked}>
-            <EnumDiffContext.Provider value={null}>
-              <Original {...props} />
-            </EnumDiffContext.Provider>
+            <UpdateDetailsContext.Provider value={updateDetails}>
+              <EnumDiffContext.Provider value={enumDiff}>
+                <Original {...props} schema={schema} />
+              </EnumDiffContext.Provider>
+            </UpdateDetailsContext.Provider>
           </ContainsChangeContext.Provider>
         );
 
@@ -265,6 +336,7 @@ const DiffHighlightPlugin = () => ({
       function DiffModelCollapse(props) {
         const fromModel = useContext(ContainsChangeContext);
         const diff = useContext(EnumDiffContext);
+        const details = useContext(UpdateDetailsContext);
         const nestedDiff = useMemo(
           () => diff && { ...diff, supplemental: false },
           [diff]
@@ -282,19 +354,24 @@ const DiffHighlightPlugin = () => ({
           ? [props.classes, "diff-ancestor"].filter(Boolean).join(" ")
           : props.classes;
 
-        if (!diff?.supplemental) {
+        if (!details && !diff?.supplemental) {
           return <Original {...props} classes={classes} />;
         }
-        const EnumModel = diff.getComponent("EnumModel");
+        const EnumModel = diff?.supplemental && diff.getComponent("EnumModel");
         return (
-          <EnumDiffContext.Provider value={null}>
-            <Original {...props} classes={classes}>
-              {props.children}
-              <EnumDiffContext.Provider value={nestedDiff}>
-                <EnumModel getComponent={diff.getComponent} />
-              </EnumDiffContext.Provider>
-            </Original>
-          </EnumDiffContext.Provider>
+          <UpdateDetailsContext.Provider value={null}>
+            <EnumDiffContext.Provider value={diff?.supplemental ? null : diff}>
+              <Original {...props} classes={classes}>
+                {props.children}
+                {details}
+                {EnumModel && (
+                  <EnumDiffContext.Provider value={nestedDiff}>
+                    <EnumModel getComponent={diff.getComponent} />
+                  </EnumDiffContext.Provider>
+                )}
+              </Original>
+            </EnumDiffContext.Provider>
+          </UpdateDetailsContext.Provider>
         );
       },
 
@@ -325,12 +402,7 @@ const DiffHighlightPlugin = () => ({
             <br />
             {originalType !== updatedType && (
               <div className="diff-type-change">
-                Type:{" "}
-                <span className="diff-updated-inline">
-                  <span className="diff-updated-old">{originalType}</span>
-                  <span className="diff-updated-arrow"> → </span>
-                  <span className="diff-updated-new">{updatedType}</span>
-                </span>
+                Type: <UpdatedValue before={originalType} after={updatedType} />
               </div>
             )}
             Enum:

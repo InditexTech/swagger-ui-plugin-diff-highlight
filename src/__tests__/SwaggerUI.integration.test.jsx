@@ -383,3 +383,436 @@ it("highlights an enum referenced by an object property without changing its sib
   expect(sibling).toHaveTextContent("[ test, qa ]");
   expect(sibling.querySelector('[class^="diff-"]')).toBeNull();
 });
+
+it("shows a maxLength change on an updated string schema", async () => {
+  renderSchemas({
+    Username: {
+      ...changedSchema(
+        { type: "string", maxLength: 100 },
+        { type: "string", maxLength: 200 }
+      ),
+      title: "Username",
+    },
+  });
+  const model = await openModel("Username");
+  const toggle = within(model).getByRole("button", { name: /Username/ });
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(within(toggle).getByText("Username")).toBeInTheDocument();
+  expect(model.querySelector(".prop-type")).toHaveTextContent("string");
+  const changes = model.querySelector(".diff-schema-changes");
+  expect(changes).toHaveTextContent("maxLength");
+  expect(within(changes).getByText("100")).toHaveClass("diff-updated-old");
+  expect(within(changes).getByText("200")).toHaveClass("diff-updated-new");
+});
+
+it("shows a format-only change on an object property as one type transition", async () => {
+  renderSchemas({
+    User: {
+      type: "object",
+      properties: {
+        createdAt: changedSchema(
+          { type: "string", format: "date" },
+          { type: "string", format: "date-time" }
+        ),
+      },
+    },
+  });
+  const model = await openModel("User", ".property-row");
+  const row = [...model.querySelectorAll(".property-row")].find((node) =>
+    node.textContent.startsWith("createdAt")
+  );
+  const toggle = within(row).getByRole("button");
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(row.querySelector(".prop-type")).toHaveTextContent("string");
+  expect(row.querySelector(".prop-format")).toHaveTextContent("($date-time)");
+  expect(changeRows(row.querySelector(".diff-schema-changes"))).toEqual([
+    "type: string($date) → string($date-time)",
+  ]);
+  expect(row.querySelectorAll(".diff-schema-keyword")).toHaveLength(1);
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(row.querySelector(".diff-schema-changes")).toBeNull();
+});
+
+it("keeps the composed Shelf body, toggle and nested marks when it is updated", async () => {
+  const shelf = (description, extra = {}) => ({
+    title: "Shelf",
+    description,
+    allOf: [
+      { type: "object", properties: { id: { type: "string" } } },
+      {
+        type: "object",
+        properties: { label: { type: "string" }, ...extra },
+      },
+    ],
+  });
+  const before = shelf("Where books sit", {
+    legacyCode: { type: "string" },
+    capacity: { type: "string" },
+  });
+  const after = shelf("Where books are shelved", {
+    capacity: { type: "integer" },
+  });
+  const marked = shelf("Where books are shelved", {
+    label: { type: "string", "x-diff-status": "added" },
+    legacyCode: { type: "string", "x-diff-status": "deleted" },
+    capacity: {
+      type: "integer",
+      "x-diff-status": "updated",
+      "x-diff-original": { type: "string" },
+      "x-diff-new": { type: "integer" },
+    },
+  });
+  renderSchemas({
+    Shelf: {
+      ...marked,
+      "x-diff-status": "updated",
+      "x-diff-original": before,
+      "x-diff-new": after,
+    },
+  });
+  const model = await openModel("Shelf", ".property-row");
+  const toggle = within(model).getByRole("button", { name: /Shelf/ });
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(within(toggle).getByText("Shelf")).toBeInTheDocument();
+  const changes = model.querySelector(".diff-schema-changes");
+  expect(
+    within(model)
+      .getAllByText("Where books are shelved")
+      .some((node) => !changes.contains(node))
+  ).toBe(true);
+  expect(within(model).getByText("id")).toBeInTheDocument();
+  expect(
+    model.querySelector(".diff-added").closest(".property-row")
+  ).toHaveTextContent("label");
+  expect(
+    model.querySelector(".diff-deleted").closest(".property-row")
+  ).toHaveTextContent("legacyCode");
+  const capacity = [...model.querySelectorAll(".property-row")].find((row) =>
+    row.textContent.startsWith("capacity")
+  );
+  fireEvent.click(within(capacity).getByRole("button"));
+  expect(changeRows(capacity.querySelector(".diff-schema-changes"))).toEqual([
+    "type: string → integer",
+  ]);
+  expect(changes).toHaveTextContent("description");
+  expect(within(changes).getByText("Where books sit")).toHaveClass(
+    "diff-updated-old"
+  );
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(model.querySelector(".diff-schema-changes")).toBeNull();
+});
+
+const changeRows = (container) =>
+  [...container.querySelectorAll(".diff-schema-change")].map((row) =>
+    row.textContent.replace(/\s+/g, " ").trim()
+  );
+
+it.each([
+  { kind: "changed enum", afterEnum: ["a", "c"], deleted: ["b"], added: ["c"] },
+  { kind: "unchanged enum", afterEnum: ["a", "b"], deleted: [], added: [] },
+])(
+  "shows keyword changes next to a $kind",
+  async ({ afterEnum, deleted, added }) => {
+    renderSchemas({
+      Code: changedSchema(
+        { type: "string", enum: ["a", "b"], maxLength: 10 },
+        { type: "string", enum: afterEnum, maxLength: 20 }
+      ),
+    });
+    const model = await openModel("Code");
+    const enumModel = model.querySelector(".prop-enum");
+    fireEvent.click(within(enumModel).getByRole("button"));
+    expect(
+      [...enumModel.querySelectorAll(".diff-deleted")].map((n) => n.textContent)
+    ).toEqual(deleted);
+    expect(
+      [...enumModel.querySelectorAll(".diff-added")].map((n) => n.textContent)
+    ).toEqual(added);
+    const changes = model.querySelector(".diff-schema-changes");
+    expect(changeRows(changes)).toEqual(["maxLength: 10 → 20"]);
+    expect(enumModel.contains(changes)).toBe(false);
+    expect(model.querySelectorAll(".diff-type-change")).toHaveLength(0);
+  }
+);
+
+it("shows added and removed scalar keywords, including false, zero and null", async () => {
+  renderSchemas({
+    Limits: changedSchema(
+      { type: "integer", maximum: 0, nullable: false },
+      { type: "integer", minimum: 0, default: null }
+    ),
+  });
+  const model = await openModel("Limits");
+  const changes = model.querySelector(".diff-schema-changes");
+  expect(changeRows(changes)).toEqual([
+    "maximum: 0",
+    "nullable: false",
+    "minimum: 0",
+    "default: null",
+  ]);
+  expect(within(changes).getByText("false")).toHaveClass("diff-deleted");
+  expect(within(changes).getAllByText("0")[1]).toHaveClass("diff-added");
+  expect(within(changes).getByText("null")).toHaveClass("diff-added");
+});
+
+it.each([
+  { kind: "both snapshots", snapshots: {} },
+  { kind: "the original snapshot", snapshots: { "x-diff-new": {} } },
+  { kind: "the new snapshot", snapshots: { "x-diff-original": {} } },
+])(
+  "keeps the native body and invents no values when $kind is missing",
+  async ({ snapshots }) => {
+    const body = {
+      type: "object",
+      title: "Parcel",
+      properties: { weight: { type: "integer" } },
+    };
+    const schema = { ...body, "x-diff-status": "updated" };
+    if (snapshots["x-diff-new"]) schema["x-diff-new"] = body;
+    if (snapshots["x-diff-original"]) schema["x-diff-original"] = body;
+    renderSchemas({ Parcel: schema });
+    const model = await openModel("Parcel", ".property-row");
+    expect(within(model).getByText("weight")).toBeInTheDocument();
+    expect(model.querySelector(".diff-schema-changes")).toBeNull();
+    expect(model.querySelector(".diff-updated-inline")).toBeNull();
+    expect(model).not.toHaveTextContent("any");
+  }
+);
+
+it("summarises structural changes and keeps nested marks inside their own rows", async () => {
+  const box = (properties, items) => ({
+    type: "object",
+    title: "Box",
+    properties: {
+      ...properties,
+      tags: { type: "array", ...items },
+    },
+  });
+  const before = box(
+    { size: { type: "string" } },
+    { items: { type: "string" } }
+  );
+  const after = box(
+    { size: { type: "integer" }, name: { type: "string" } },
+    { items: { type: "integer" } }
+  );
+  const marked = box(
+    {
+      size: {
+        type: "integer",
+        "x-diff-status": "updated",
+        "x-diff-original": { type: "string" },
+        "x-diff-new": { type: "integer" },
+      },
+      name: { type: "string", "x-diff-status": "added" },
+    },
+    { items: { type: "integer" } }
+  );
+  renderSchemas({
+    Box: {
+      ...marked,
+      "x-diff-status": "updated",
+      "x-diff-original": before,
+      "x-diff-new": after,
+    },
+  });
+  expect(document.querySelector(".diff-schema-changes")).toBeNull();
+  const model = await openModel("Box", ".property-row");
+  const parentChanges = [...model.querySelectorAll(".diff-schema-changes")];
+  expect(parentChanges).toHaveLength(1);
+  expect(changeRows(parentChanges[0])).toEqual(["properties: changed"]);
+  expect(
+    model.querySelector(".diff-added").closest(".property-row")
+  ).toHaveTextContent("name");
+  const sizeRow = [...model.querySelectorAll(".property-row")].find((row) =>
+    row.textContent.startsWith("size")
+  );
+  fireEvent.click(within(sizeRow).getByRole("button"));
+  const nested = sizeRow.querySelector(".diff-schema-changes");
+  expect(changeRows(nested)).toEqual(["type: string → integer"]);
+  expect(parentChanges[0].closest(".property-row")).toBeNull();
+  fireEvent.click(model.querySelector(".model-box-control"));
+  expect(model.querySelector(".diff-schema-changes")).toBeNull();
+});
+
+it("summarises a changed array items schema compactly", async () => {
+  renderSchemas({
+    Tags: changedSchema(
+      { type: "array", items: { type: "string" } },
+      { type: "array", items: { type: "integer", format: "int32" } }
+    ),
+  });
+  const model = await openModel("Tags", ".diff-schema-changes");
+  const changes = model.querySelector(".diff-schema-changes");
+  expect(changeRows(changes)).toEqual(["items: changed"]);
+  expect(changes).not.toHaveTextContent("int32");
+});
+
+const renderOperations = (schemas) =>
+  render(
+    <SwaggerUI
+      spec={{
+        openapi: "3.0.3",
+        info: { title: "Books", version: "1" },
+        paths: {
+          "/books": {
+            get: {
+              operationId: "listBooks",
+              responses: {
+                200: {
+                  description: "ok",
+                  content: {
+                    "application/json": {
+                      schema: {
+                        type: "array",
+                        items: { $ref: "#/components/schemas/Book" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            post: {
+              operationId: "addBook",
+              requestBody: {
+                content: {
+                  "application/json": {
+                    schema: { $ref: "#/components/schemas/Book" },
+                  },
+                },
+              },
+              responses: { 201: { description: "created" } },
+            },
+          },
+        },
+        components: { schemas },
+      }}
+      plugins={[DiffHighlightPlugin]}
+      docExpansion="full"
+      defaultModelRendering="model"
+      defaultModelExpandDepth={2}
+    />
+  );
+
+it("shows keyword changes of a referenced schema in request and response schema views", async () => {
+  renderOperations({
+    Book: changedSchema(
+      {
+        type: "object",
+        properties: { isbn: { type: "string", maxLength: 10 } },
+      },
+      {
+        type: "object",
+        properties: { isbn: { type: "string", maxLength: 13 } },
+      }
+    ),
+  });
+  const operations = await waitFor(() => {
+    const found = document.querySelectorAll(".opblock");
+    expect(found).toHaveLength(2);
+    return [...found];
+  });
+  for (const operation of operations) {
+    await waitFor(() =>
+      expect(operation.querySelector(".model-box")).toBeInTheDocument()
+    );
+    const body = operation.querySelector(".model-box");
+    expect(within(body).getByText("isbn")).toBeInTheDocument();
+    expect(body.querySelector(".diff-schema-changes")).toHaveTextContent(
+      "properties: changed"
+    );
+  }
+});
+
+const parcelLabel = (maxLength) => ({ type: "string", maxLength });
+const parcelSchema = changedSchema(
+  {
+    type: "object",
+    title: "Parcel",
+    properties: { label: parcelLabel(10) },
+  },
+  {
+    type: "object",
+    title: "Parcel",
+    properties: { label: parcelLabel(13) },
+  }
+);
+parcelSchema.properties.label = changedSchema(parcelLabel(10), parcelLabel(13));
+
+const expectParameterModelKeepsNativeBody = async () => {
+  await waitFor(() =>
+    expect(document.querySelector(".parameters .model-box")).toBeInTheDocument()
+  );
+  const model = document.querySelector(".parameters .model-box");
+  expect(within(model).getByText("label")).toBeInTheDocument();
+  expect(model.querySelector(".model-box-control")).toBeInTheDocument();
+  const labelRow = [...model.querySelectorAll(".property-row")].find((row) =>
+    row.textContent.startsWith("label")
+  );
+  const summaries = [...model.querySelectorAll(".diff-schema-changes")];
+  const [parent] = summaries.filter((el) => !labelRow.contains(el));
+  expect(changeRows(parent)).toEqual(["properties: changed"]);
+  expect(changeRows(labelRow.querySelector(".diff-schema-changes"))).toEqual([
+    "maxLength: 10 → 13",
+  ]);
+};
+
+it("keeps the native model and keyword changes for a Swagger 2 body parameter", async () => {
+  render(
+    <SwaggerUI
+      spec={{
+        swagger: "2.0",
+        info: { title: "Parcels", version: "1" },
+        paths: {
+          "/parcels": {
+            post: {
+              operationId: "addParcel",
+              consumes: ["application/json"],
+              parameters: [{ name: "body", in: "body", schema: parcelSchema }],
+              responses: { 201: { description: "created" } },
+            },
+          },
+        },
+      }}
+      plugins={[DiffHighlightPlugin]}
+      docExpansion="full"
+      defaultModelRendering="model"
+      defaultModelExpandDepth={2}
+    />
+  );
+  await expectParameterModelKeepsNativeBody();
+});
+
+it("keeps the native model and keyword changes for an OAS3 parameter with JSON content", async () => {
+  render(
+    <SwaggerUI
+      spec={{
+        openapi: "3.0.3",
+        info: { title: "Parcels", version: "1" },
+        paths: {
+          "/parcels": {
+            get: {
+              operationId: "findParcels",
+              parameters: [
+                {
+                  name: "filter",
+                  in: "query",
+                  content: { "application/json": { schema: parcelSchema } },
+                },
+              ],
+              responses: { 200: { description: "ok" } },
+            },
+          },
+        },
+      }}
+      plugins={[DiffHighlightPlugin]}
+      docExpansion="full"
+      defaultModelRendering="model"
+      defaultModelExpandDepth={2}
+    />
+  );
+  await expectParameterModelKeepsNativeBody();
+});
