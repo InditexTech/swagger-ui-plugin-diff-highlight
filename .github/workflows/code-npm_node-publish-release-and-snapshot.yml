@@ -51,6 +51,9 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      pull-requests: read
+    outputs:
+      pr_number: ${{ steps.pull-request.outputs.pr_number }}
     steps:
       - name: Require maintain or admin on the triggering actor
         env:
@@ -65,6 +68,33 @@ jobs:
             echo "::error title=Snapshot dispatch denied::${ACTOR} has role '${role:-unknown}'; snapshot dispatch requires maintain or admin."
             exit 1
           fi
+
+      - name: Resolve the pull request of a non-protected snapshot branch
+        id: pull-request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          BRANCH: ${{ github.ref_name }}
+          REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "pr_number=" >> "$GITHUB_OUTPUT"
+          if [[ "$REF" != "refs/heads/${BRANCH}" ]]; then
+            echo "::error title=Snapshot dispatch denied::snapshot dispatch requires a branch ref, got '${REF}'."
+            exit 1
+          fi
+          if [[ "$BRANCH" == "main" || "$BRANCH" == "develop" ]]; then
+            exit 0
+          fi
+          pr_number="$(gh api -X GET "repos/${REPOSITORY}/pulls" -f state=open -f head="${OWNER}:${BRANCH}" \
+            | jq -r --arg repo "$REPOSITORY" --arg branch "$BRANCH" '[.[] | select(.state == "open" and .head.repo.full_name == $repo and .head.ref == $branch and (.base.ref == "main" or .base.ref == "develop")) | .number] | min // empty')"
+          if [[ ! "$pr_number" =~ ^[1-9][0-9]{0,8}$ ]]; then
+            echo "::error title=Snapshot dispatch denied::branch '${BRANCH}' has no open pull request from this repository into main or develop."
+            exit 1
+          fi
+          echo "pr_number=${pr_number}" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build snapshot
@@ -85,7 +115,8 @@ jobs:
           inputs.release_type == 'snapshot' &&
           (
             (vars.DEVELOPMENT_FLOW == 'trunk-based-development' && github.ref == 'refs/heads/main') ||
-            (vars.DEVELOPMENT_FLOW == 'git-flow' && github.ref == 'refs/heads/develop')
+            (vars.DEVELOPMENT_FLOW == 'git-flow' && github.ref == 'refs/heads/develop') ||
+            (github.ref_type == 'branch' && needs.check-dispatch-actor.outputs.pr_number != '')
           )
         )
       )
@@ -96,6 +127,7 @@ jobs:
     outputs:
       artifact_name: ${{ steps.pack.outputs.artifact_name }}
       should_publish: ${{ steps.plan.outputs.should_publish }}
+      dist_tag: ${{ steps.plan.outputs.dist_tag }}
     steps:
       - name: Re-check dispatch actor (job reruns reuse earlier authorization)
         if: github.event_name == 'workflow_dispatch'
@@ -121,9 +153,15 @@ jobs:
         id: plan
         env:
           PUBLISH_SNAPSHOT: ${{ vars.PUBLISH_SNAPSHOT }}
+          PR_NUMBER: ${{ needs.check-dispatch-actor.outputs.pr_number }}
         shell: bash
         run: |
           set -euo pipefail
+          if [[ -n "${PR_NUMBER:-}" ]]; then
+            echo "dist_tag=pr-${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          else
+            echo "dist_tag=next" >> "$GITHUB_OUTPUT"
+          fi
           if [[ "${PUBLISH_SNAPSHOT:-false}" != "true" ]]; then
             echo "::notice title=Snapshot disabled::publish_snapshot opt-in is off; no snapshot is published."
             echo "should_publish=false" >> "$GITHUB_OUTPUT"
@@ -293,13 +331,13 @@ jobs:
           path: ${{ runner.temp }}/publish-dist
 
       - name: Publish via npm trusted publishing
-        uses: InditexTech/gh-actions/npm@ab7978dfa118776238a6982e445707a1ae6c0668 # v1.2.0
+        uses: InditexTech/gh-actions/npm@4c47065e5626df9750b03c429c6e88df48067df7 # v1.2.2
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         with:
           working-directory: ${{ vars.WORKING_DIRECTORY }}
           project-type: ${{ vars.PROJECT_TYPE }}
-          dist-tag: next
+          dist-tag: ${{ needs.build.outputs.dist_tag }}
           artifact-directory: ${{ runner.temp }}/publish-dist
 
   release-core:
@@ -342,7 +380,7 @@ jobs:
           path: ${{ runner.temp }}/publish-dist
 
       - name: Publish via npm trusted publishing
-        uses: InditexTech/gh-actions/npm@ab7978dfa118776238a6982e445707a1ae6c0668 # v1.2.0
+        uses: InditexTech/gh-actions/npm@4c47065e5626df9750b03c429c6e88df48067df7 # v1.2.2
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         with:
@@ -561,7 +599,7 @@ jobs:
           git -C "$source" push --atomic origin "$RELEASE_COMMIT:$EXPECTED_REF" "${tag_refs[@]}"
 
       - name: Publish verified delegated tarballs via npm trusted publishing
-        uses: InditexTech/gh-actions/npm@ab7978dfa118776238a6982e445707a1ae6c0668 # v1.2.0
+        uses: InditexTech/gh-actions/npm@4c47065e5626df9750b03c429c6e88df48067df7 # v1.2.2
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         with:
@@ -643,7 +681,7 @@ jobs:
           asdf_version: ${{ env.ASDF_BRANCH_VERSION }}
 
       - name: Configure release git signing
-        uses: InditexTech/gh-actions/configure-release-git@ab7978dfa118776238a6982e445707a1ae6c0668
+        uses: InditexTech/gh-actions/configure-release-git@4c47065e5626df9750b03c429c6e88df48067df7 # v1.2.2
         with:
           token: ${{ github.token }}
           gpg-secret-key: ${{ secrets.CI_GPG_SECRET_KEY }}
