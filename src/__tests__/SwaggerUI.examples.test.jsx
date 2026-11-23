@@ -275,3 +275,99 @@ it("keeps the retained allOf members and the empty array in a Swagger 2.0 exampl
   expect(request).toEqual(expected);
   expect(response).toEqual(expected);
 });
+
+const partRef = { $ref: "#/components/schemas/Part" };
+
+const linkedSchemas = () => ({
+  Part: { type: "object", properties: { cog: { type: "string" } } },
+  Widget: {
+    type: "object",
+    properties: {
+      label: { type: "string" },
+      legacy: deleted({ type: "string" }),
+      linkedOld: deleted(partRef),
+      linkedKept: partRef,
+      listOld: deleted({ type: "array", items: partRef }),
+      listKept: { type: "array", items: deleted(partRef) },
+    },
+  },
+});
+
+const linkedExpected = {
+  label: "string",
+  linkedKept: { cog: "string" },
+  listKept: [],
+};
+
+const widgetRef = { $ref: "#/components/schemas/Widget" };
+
+it.each(["3.0.3", "3.1.0"])(
+  "leaves a deleted $ref schema out of an OpenAPI %s example",
+  async (openapi) => {
+    render(
+      <SwaggerUI
+        spec={{
+          openapi,
+          info: { title: "Examples", version: "1" },
+          paths: {
+            "/widgets": {
+              post: {
+                operationId: "addWidget",
+                requestBody: {
+                  content: { "application/json": { schema: widgetRef } },
+                },
+                responses: {
+                  200: {
+                    description: "ok",
+                    content: { "application/json": { schema: widgetRef } },
+                  },
+                },
+              },
+            },
+          },
+          components: { schemas: linkedSchemas() },
+        }}
+        plugins={[DiffHighlightPlugin]}
+        docExpansion="full"
+      />
+    );
+    const { request, response } = await readExamples();
+    expect(request).toEqual(linkedExpected);
+    expect(response).toEqual(linkedExpected);
+  }
+);
+
+it("leaves a deleted $ref schema out of a Swagger 2.0 example", async () => {
+  const swaggerRef = { $ref: "#/definitions/Widget" };
+  const definitions = JSON.parse(
+    JSON.stringify(linkedSchemas()).replaceAll(
+      "#/components/schemas/",
+      "#/definitions/"
+    )
+  );
+  render(
+    <SwaggerUI
+      spec={{
+        swagger: "2.0",
+        info: { title: "Examples", version: "1" },
+        paths: {
+          "/widgets": {
+            post: {
+              operationId: "addWidget",
+              consumes: ["application/json"],
+              produces: ["application/json"],
+              parameters: [{ in: "body", name: "body", schema: swaggerRef }],
+              responses: { 200: { description: "ok", schema: swaggerRef } },
+            },
+          },
+        },
+        definitions,
+      }}
+      plugins={[DiffHighlightPlugin]}
+      docExpansion="full"
+    />
+  );
+  const { request, response } = await readExamples();
+  expect(request).toEqual(linkedExpected);
+  expect(response).toEqual(linkedExpected);
+});
