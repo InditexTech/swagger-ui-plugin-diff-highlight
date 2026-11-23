@@ -1,0 +1,19 @@
+src/__tests__/SwaggerUI.examples.test.jsx
+  s_32646b39d9e145::t_bdd143d32f32db 1-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "69efc5a77687a00d7ace58677dcf9d2e179de162",
+  "prompts": {},
+  "sessions": {
+    "s_32646b39d9e145": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_df6d700b1ffeJlTFc6FRq5R3BG",
+        "model": "claude-sonnet-5.5"
+      },
+      "human_author": "Airam Rguez <airamrr@ext.inditex.com>"
+    }
+  }
+}
