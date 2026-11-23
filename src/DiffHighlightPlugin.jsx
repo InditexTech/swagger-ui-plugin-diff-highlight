@@ -120,6 +120,102 @@ export const containsChange = (schema, resolveRef = () => undefined) => {
   return readStatus(root) === "updated" || hasChangedDescendant(root);
 };
 
+const isDeleted = (schema) => schema?.["x-diff-status"] === "deleted";
+
+const isSchemaObject = (value) =>
+  value != null && typeof value === "object" && !Array.isArray(value);
+
+const sameMembers = (a, b) =>
+  Object.keys(a).length === Object.keys(b).length &&
+  Object.keys(a).every((key) => a[key] === b[key]);
+
+/**
+ * Removes the schemas marked `x-diff-status: deleted` from a plain JS schema,
+ * at any depth: object properties, array `items`, `additionalProperties` and
+ * `allOf` / `anyOf` / `oneOf` members. Names removed from `properties` are
+ * dropped from `required`. A schema with nothing to remove is returned as is,
+ * and the input is never mutated.
+ *
+ * @param {object} schema - The schema as a plain JS object.
+ * @param {Set<object>} [seen] - The schemas being visited, to stop on cycles.
+ * @returns {object} The pruned schema.
+ */
+export const pruneDeleted = (schema, seen = new Set()) => {
+  if (!isSchemaObject(schema) || seen.has(schema)) {
+    return schema;
+  }
+  seen.add(schema);
+  const result = { ...schema };
+  let changed = false;
+  const replace = (key, value) => {
+    if (value !== schema[key]) {
+      changed = true;
+      if (value === undefined) {
+        delete result[key];
+      } else {
+        result[key] = value;
+      }
+    }
+  };
+  const prune = (member) =>
+    isDeleted(member) ? undefined : pruneDeleted(member, seen);
+  const pruneList = (members) => {
+    const kept = members.map(prune).filter((member) => member !== undefined);
+    return sameMembers(kept, members) ? members : kept;
+  };
+
+  if (isSchemaObject(schema.properties)) {
+    const kept = {};
+    for (const [name, property] of Object.entries(schema.properties)) {
+      const pruned = prune(property);
+      if (pruned !== undefined) {
+        kept[name] = pruned;
+      }
+    }
+    replace(
+      "properties",
+      sameMembers(kept, schema.properties) ? schema.properties : kept
+    );
+    if (Array.isArray(schema.required)) {
+      const required = schema.required.filter(
+        (name) => !(name in schema.properties) || name in kept
+      );
+      replace(
+        "required",
+        sameMembers(required, schema.required) ? schema.required : required
+      );
+    }
+  }
+  for (const key of ["items", "additionalProperties"]) {
+    if (isSchemaObject(schema[key])) {
+      replace(key, prune(schema[key]));
+    } else if (Array.isArray(schema[key])) {
+      replace(key, pruneList(schema[key]));
+    }
+  }
+  for (const key of ["allOf", "anyOf", "oneOf"]) {
+    if (Array.isArray(schema[key])) {
+      replace(key, pruneList(schema[key]));
+    }
+  }
+  seen.delete(schema);
+  return changed ? result : schema;
+};
+
+const prunedSchemas = new WeakMap();
+
+const withoutDeleted = (schema) => {
+  if (schema == null || typeof schema !== "object") {
+    return schema;
+  }
+  if (!prunedSchemas.has(schema)) {
+    const js = typeof schema.toJS === "function" ? schema.toJS() : schema;
+    const pruned = pruneDeleted(js);
+    prunedSchemas.set(schema, pruned === js ? schema : pruned);
+  }
+  return prunedSchemas.get(schema);
+};
+
 /**
  * Builds a resolver for local `$ref`s ("#/components/schemas/User") against
  * the loaded spec.
@@ -260,6 +356,19 @@ const schemaUpdateDetails = (original, updated, enumHandled) => {
  * @returns {object} A swagger-ui plugin object exposing `wrapComponents`.
  */
 const DiffHighlightPlugin = () => ({
+  /**
+   * Every Example tab builds its body through `fn.getSampleSchema`, which
+   * reads `properties` and ignores `x-diff-status`. Pruning the deleted
+   * schemas first makes the example show the consolidated contract. Wrapping
+   * in `afterLoad` keeps Swagger UI's own OpenAPI 3.0 / 3.1 dispatch intact.
+   */
+  afterLoad(system) {
+    const original = system.fn?.getSampleSchema;
+    if (typeof original === "function") {
+      this.fn.getSampleSchema = (schema, ...rest) =>
+        original(withoutDeleted(schema), ...rest);
+    }
+  },
   wrapComponents: {
     /**
      * Schema properties: each property value is rendered as a nested `<Model>`.

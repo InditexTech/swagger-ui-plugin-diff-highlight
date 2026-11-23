@@ -26,6 +26,10 @@ When an API evolves from one version to the next, it is hard to see _what actual
 
 An updated schema keeps Swagger UI's native model, including its name, body, toggle and nested marks. The changed keywords are listed at the end of its accordion body.
 
+### Generated examples
+
+The request and response **Example** tabs show the consolidated (new) contract. Swagger UI builds those bodies from schema `properties` and ignores `x-diff-status`, so the plugin prunes every schema marked `deleted` before the example is generated: object properties, array `items`, `additionalProperties` and `allOf` / `anyOf` / `oneOf` members, at any depth. Names it removes are also dropped from `required`. `added`, `updated` and unchanged schemas stay. The **Model** tab still lists deleted properties with their red mark. An `example` or `examples` you write yourself is used as authored and is not pruned. Specs without `x-diff-status` produce the same examples as before.
+
 ## Getting Started
 
 ### Installation

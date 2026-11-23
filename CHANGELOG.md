@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Generated request and response examples no longer include properties marked `x-diff-status: deleted` ([#93](https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/issues/93))
 - Updated schemas, including composed `allOf` ones, no longer lose their name, body, toggle and nested diff marks ([#89](https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/issues/89))
 
 ## [0.3.0] - 2026-10-21

@@ -85,11 +85,16 @@ const withoutAnnotations = (value) =>
     )
   );
 
-const renderOperation = ({ schema, requestMedia = {}, responseMedia = {} }) =>
+const renderOperation = ({
+  schema,
+  requestMedia = {},
+  responseMedia = {},
+  openapi = "3.0.3",
+}) =>
   render(
     <SwaggerUI
       spec={{
-        openapi: "3.0.3",
+        openapi,
         info: { title: "Examples", version: "1" },
         paths: {
           "/widgets": {
@@ -130,12 +135,15 @@ const readExamples = async () => {
   return { request: JSON.parse(request), response: JSON.parse(response) };
 };
 
-it("leaves deleted properties out of the request and response examples", async () => {
-  renderOperation({ schema: widgetSchema() });
-  const { request, response } = await readExamples();
-  expect(request).toEqual(consolidated);
-  expect(response).toEqual(consolidated);
-});
+it.each(["3.0.3", "3.1.0"])(
+  "leaves deleted properties out of the examples of an OpenAPI %s spec",
+  async (openapi) => {
+    renderOperation({ schema: widgetSchema(), openapi });
+    const { request, response } = await readExamples();
+    expect(request).toEqual(consolidated);
+    expect(response).toEqual(consolidated);
+  }
+);
 
 it("keeps every property in the examples of a spec without diff annotations", async () => {
   renderOperation({ schema: withoutAnnotations(widgetSchema()) });
