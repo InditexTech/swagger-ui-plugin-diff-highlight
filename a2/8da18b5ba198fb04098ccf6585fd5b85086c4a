@@ -1,0 +1,29 @@
+CHANGELOG.md
+  s_32646b39d9e145::t_842cf9e4d2bc2e 22
+README.md
+  s_32646b39d9e145::t_46198b772bb35d 29-32
+src/DiffHighlightPlugin.jsx
+  s_32646b39d9e145::t_9daf371042fe1a 123-218,359-371
+src/__tests__/SwaggerUI.examples.test.jsx
+  s_32646b39d9e145::t_67289d6de859aa 88-93,97,138-146
+src/__tests__/pruneDeleted.test.js
+  s_32646b39d9e145::t_5ccee5e6861e52 1-72
+types/index.d.ts
+  s_32646b39d9e145::t_984ae0a31272bf 7-8,11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "a28da18b5ba198fb04098ccf6585fd5b85086c4a",
+  "prompts": {},
+  "sessions": {
+    "s_32646b39d9e145": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_df6d700b1ffeJlTFc6FRq5R3BG",
+        "model": "claude-sonnet-5.5"
+      },
+      "human_author": "Airam Rguez <airamrr@ext.inditex.com>"
+    }
+  }
+}
