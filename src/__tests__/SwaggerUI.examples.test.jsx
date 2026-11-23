@@ -171,3 +171,50 @@ it("leaves the authored media type example alone", async () => {
   expect(request).toEqual(authored);
   expect(response).toEqual(authored);
 });
+
+const compositionSchema = () => ({
+  allOf: [
+    { type: "object", properties: { keptMember: { type: "string" } } },
+    deleted({
+      type: "object",
+      properties: { deletedMember: { type: "string" } },
+    }),
+    {
+      type: "object",
+      properties: {
+        insideDeleted: deleted({ type: "string" }),
+        insideKept: { type: "string" },
+      },
+    },
+  ],
+});
+
+it.each(["3.0.3", "3.1.0"])(
+  "keeps the retained allOf members of a property in an OpenAPI %s example",
+  async (openapi) => {
+    renderOperation({
+      schema: {
+        type: "object",
+        properties: { composition: compositionSchema() },
+      },
+      openapi,
+    });
+    const { request, response } = await readExamples();
+    const expected = {
+      composition: { keptMember: "string", insideKept: "string" },
+    };
+    expect(request).toEqual(expected);
+    expect(response).toEqual(expected);
+  }
+);
+
+it.each(["3.0.3", "3.1.0"])(
+  "keeps the retained allOf members of the top-level schema in an OpenAPI %s example",
+  async (openapi) => {
+    renderOperation({ schema: compositionSchema(), openapi });
+    const { request, response } = await readExamples();
+    const expected = { keptMember: "string", insideKept: "string" };
+    expect(request).toEqual(expected);
+    expect(response).toEqual(expected);
+  }
+);
