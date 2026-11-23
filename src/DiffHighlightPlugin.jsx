@@ -129,6 +129,53 @@ const sameMembers = (a, b) =>
   Object.keys(a).length === Object.keys(b).length &&
   Object.keys(a).every((key) => a[key] === b[key]);
 
+const pruneList = (members, prune) => {
+  const kept = members.map(prune).filter((member) => member !== undefined);
+  return sameMembers(kept, members) ? members : kept;
+};
+
+const prunePropertyUpdates = (schema, prune) => {
+  if (!isSchemaObject(schema.properties)) {
+    return {};
+  }
+  const kept = {};
+  for (const [name, property] of Object.entries(schema.properties)) {
+    const pruned = prune(property);
+    if (pruned !== undefined) {
+      kept[name] = pruned;
+    }
+  }
+  const updates = {
+    properties: sameMembers(kept, schema.properties) ? schema.properties : kept,
+  };
+  if (Array.isArray(schema.required)) {
+    const required = schema.required.filter(
+      (name) => !(name in schema.properties) || name in kept
+    );
+    updates.required = sameMembers(required, schema.required)
+      ? schema.required
+      : required;
+  }
+  return updates;
+};
+
+const pruneSubschemaUpdates = (schema, prune) => {
+  const updates = {};
+  for (const key of ["items", "additionalProperties"]) {
+    if (isSchemaObject(schema[key])) {
+      updates[key] = prune(schema[key]);
+    } else if (Array.isArray(schema[key])) {
+      updates[key] = pruneList(schema[key], prune);
+    }
+  }
+  for (const key of ["allOf", "anyOf", "oneOf"]) {
+    if (Array.isArray(schema[key])) {
+      updates[key] = pruneList(schema[key], prune);
+    }
+  }
+  return updates;
+};
+
 /**
  * Removes the schemas marked `x-diff-status: deleted` from a plain JS schema,
  * at any depth: object properties, array `items`, `additionalProperties` and
@@ -147,64 +194,32 @@ export const pruneDeleted = (schema, seen = new Set()) => {
     return schema;
   }
   seen.add(schema);
-  const result = { ...schema };
-  let changed = false;
-  const replace = (key, value) => {
-    if (value !== schema[key]) {
-      changed = true;
-      if (value === undefined) {
-        delete result[key];
-      } else {
-        result[key] = value;
-      }
-    }
-  };
   const prune = (member) =>
     isDeleted(member) ? undefined : pruneDeleted(member, seen);
-  const pruneList = (members) => {
-    const kept = members.map(prune).filter((member) => member !== undefined);
-    return sameMembers(kept, members) ? members : kept;
+  const updates = {
+    ...prunePropertyUpdates(schema, prune),
+    ...(isDeleted(schema.items) && schema.example === undefined
+      ? { example: [] }
+      : {}),
+    ...pruneSubschemaUpdates(schema, prune),
   };
-
-  if (isSchemaObject(schema.properties)) {
-    const kept = {};
-    for (const [name, property] of Object.entries(schema.properties)) {
-      const pruned = prune(property);
-      if (pruned !== undefined) {
-        kept[name] = pruned;
-      }
-    }
-    replace(
-      "properties",
-      sameMembers(kept, schema.properties) ? schema.properties : kept
-    );
-    if (Array.isArray(schema.required)) {
-      const required = schema.required.filter(
-        (name) => !(name in schema.properties) || name in kept
-      );
-      replace(
-        "required",
-        sameMembers(required, schema.required) ? schema.required : required
-      );
-    }
-  }
-  if (isDeleted(schema.items) && schema.example === undefined) {
-    replace("example", []);
-  }
-  for (const key of ["items", "additionalProperties"]) {
-    if (isSchemaObject(schema[key])) {
-      replace(key, prune(schema[key]));
-    } else if (Array.isArray(schema[key])) {
-      replace(key, pruneList(schema[key]));
-    }
-  }
-  for (const key of ["allOf", "anyOf", "oneOf"]) {
-    if (Array.isArray(schema[key])) {
-      replace(key, pruneList(schema[key]));
-    }
-  }
   seen.delete(schema);
-  return changed ? result : schema;
+
+  const changedKeys = Object.keys(updates).filter(
+    (key) => updates[key] !== schema[key]
+  );
+  if (changedKeys.length === 0) {
+    return schema;
+  }
+  const result = { ...schema };
+  for (const key of changedKeys) {
+    if (updates[key] === undefined) {
+      delete result[key];
+    } else {
+      result[key] = updates[key];
+    }
+  }
+  return result;
 };
 
 const DELETED = "deleted";
@@ -213,7 +228,8 @@ const markPropertiesDeleted = (member) => {
   if (!isDeleted(member) || !isSchemaObject(member.properties)) {
     return member;
   }
-  const { "x-diff-status": _status, ...rest } = member;
+  const rest = { ...member };
+  delete rest["x-diff-status"];
   return {
     ...rest,
     properties: Object.fromEntries(
