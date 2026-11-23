@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, it } from "vitest";
 
-import { pruneDeleted } from "../DiffHighlightPlugin";
+import {
+  pruneDeleted,
+  pushDeletedAllOfMembersDown,
+} from "../DiffHighlightPlugin";
 
 const gone = { type: "string", "x-diff-status": "deleted" };
 
@@ -55,10 +58,17 @@ it("prunes items, additionalProperties and composed members", () => {
   });
 });
 
-it("drops a deleted items or additionalProperties schema", () => {
+it("gives an array whose items schema is deleted an empty example", () => {
   expect(pruneDeleted({ type: "array", items: gone })).toEqual({
     type: "array",
+    example: [],
   });
+  expect(
+    pruneDeleted({ type: "array", items: gone, example: [1] }).example
+  ).toEqual([1]);
+});
+
+it("drops a deleted additionalProperties schema", () => {
   expect(pruneDeleted({ type: "object", additionalProperties: gone })).toEqual({
     type: "object",
   });
@@ -69,4 +79,36 @@ it("terminates on a cyclic schema", () => {
   node.properties.next = node;
   const pruned = pruneDeleted(node);
   expect(Object.keys(pruned.properties)).toEqual(["next"]);
+});
+
+it("moves the status of a deleted allOf member onto its properties", () => {
+  const spec = {
+    components: {
+      schemas: {
+        Widget: {
+          allOf: [
+            { type: "object", properties: { base: { type: "string" } } },
+            {
+              type: "object",
+              "x-diff-status": "deleted",
+              properties: { old: { type: "string" } },
+            },
+          ],
+        },
+      },
+    },
+  };
+  const before = JSON.stringify(spec);
+  expect(pushDeletedAllOfMembersDown(spec).components.schemas.Widget).toEqual({
+    allOf: [
+      { type: "object", properties: { base: { type: "string" } } },
+      { type: "object", properties: { old: gone } },
+    ],
+  });
+  expect(JSON.stringify(spec)).toBe(before);
+});
+
+it("leaves a deleted allOf member without properties as it is", () => {
+  const spec = { allOf: [gone, "text", { type: "object" }] };
+  expect(pushDeletedAllOfMembersDown(spec)).toEqual(spec);
 });

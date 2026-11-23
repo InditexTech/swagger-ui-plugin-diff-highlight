@@ -132,7 +132,9 @@ const sameMembers = (a, b) =>
 /**
  * Removes the schemas marked `x-diff-status: deleted` from a plain JS schema,
  * at any depth: object properties, array `items`, `additionalProperties` and
- * `allOf` / `anyOf` / `oneOf` members. Names removed from `properties` are
+ * `allOf` / `anyOf` / `oneOf` members. A deleted `items` schema leaves an
+ * array with `example: []` unless it has one, since Swagger UI 2.0 and 3.0
+ * omit an array without `items` from the example. Names removed from `properties` are
  * dropped from `required`. A schema with nothing to remove is returned as is,
  * and the input is never mutated.
  *
@@ -186,6 +188,9 @@ export const pruneDeleted = (schema, seen = new Set()) => {
       );
     }
   }
+  if (isDeleted(schema.items) && schema.example === undefined) {
+    replace("example", []);
+  }
   for (const key of ["items", "additionalProperties"]) {
     if (isSchemaObject(schema[key])) {
       replace(key, prune(schema[key]));
@@ -200,6 +205,56 @@ export const pruneDeleted = (schema, seen = new Set()) => {
   }
   seen.delete(schema);
   return changed ? result : schema;
+};
+
+const DELETED = "deleted";
+
+const markPropertiesDeleted = (member) => {
+  if (!isDeleted(member) || !isSchemaObject(member.properties)) {
+    return member;
+  }
+  const { "x-diff-status": _status, ...rest } = member;
+  return {
+    ...rest,
+    properties: Object.fromEntries(
+      Object.entries(member.properties).map(([name, property]) => [
+        name,
+        isSchemaObject(property)
+          ? { ...property, "x-diff-status": DELETED }
+          : property,
+      ])
+    ),
+  };
+};
+
+/**
+ * Swagger UI merges `allOf` members into one schema before it builds an
+ * example, so the `x-diff-status` of a deleted member would overwrite the
+ * status of the whole merged schema and leave the member's properties
+ * unmarked. This moves the status of each deleted inline member onto its
+ * properties, which survive the merge, in a spec as loaded and before it is
+ * resolved. The input is never mutated.
+ *
+ * @param {unknown} node - The spec as plain JSON.
+ * @returns {unknown} The spec with deleted `allOf` members pushed down.
+ */
+export const pushDeletedAllOfMembersDown = (node) => {
+  if (Array.isArray(node)) {
+    return node.map(pushDeletedAllOfMembersDown);
+  }
+  if (!isSchemaObject(node)) {
+    return node;
+  }
+  return Object.fromEntries(
+    Object.entries(node).map(([key, value]) => [
+      key,
+      key === "allOf" && Array.isArray(value)
+        ? value.map((member) =>
+            pushDeletedAllOfMembersDown(markPropertiesDeleted(member))
+          )
+        : pushDeletedAllOfMembersDown(value),
+    ])
+  );
 };
 
 const prunedSchemas = new WeakMap();
@@ -368,6 +423,14 @@ const DiffHighlightPlugin = () => ({
       this.fn.getSampleSchema = (schema, ...rest) =>
         original(withoutDeleted(schema), ...rest);
     }
+  },
+  statePlugins: {
+    spec: {
+      wrapActions: {
+        updateJsonSpec: (updateJsonSpec) => (json) =>
+          updateJsonSpec(pushDeletedAllOfMembersDown(json)),
+      },
+    },
   },
   wrapComponents: {
     /**

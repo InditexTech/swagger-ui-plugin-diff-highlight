@@ -218,3 +218,60 @@ it.each(["3.0.3", "3.1.0"])(
     expect(response).toEqual(expected);
   }
 );
+
+it.each(["3.0.3", "3.1.0"])(
+  "shows an array whose items schema is deleted in an OpenAPI %s example",
+  async (openapi) => {
+    renderOperation({
+      schema: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          tags: { type: "array", items: deleted({ type: "string" }) },
+        },
+      },
+      openapi,
+    });
+    const { request, response } = await readExamples();
+    expect(request).toEqual({ id: "string", tags: [] });
+    expect(response).toEqual({ id: "string", tags: [] });
+  }
+);
+
+it("keeps the retained allOf members and the empty array in a Swagger 2.0 example", async () => {
+  const schema = {
+    type: "object",
+    properties: {
+      composition: compositionSchema(),
+      tags: { type: "array", items: deleted({ type: "string" }) },
+    },
+  };
+  render(
+    <SwaggerUI
+      spec={{
+        swagger: "2.0",
+        info: { title: "Examples", version: "1" },
+        paths: {
+          "/widgets": {
+            post: {
+              operationId: "addWidget",
+              consumes: ["application/json"],
+              produces: ["application/json"],
+              parameters: [{ in: "body", name: "body", schema }],
+              responses: { 200: { description: "ok", schema } },
+            },
+          },
+        },
+      }}
+      plugins={[DiffHighlightPlugin]}
+      docExpansion="full"
+    />
+  );
+  const { request, response } = await readExamples();
+  const expected = {
+    composition: { keptMember: "string", insideKept: "string" },
+    tags: [],
+  };
+  expect(request).toEqual(expected);
+  expect(response).toEqual(expected);
+});
