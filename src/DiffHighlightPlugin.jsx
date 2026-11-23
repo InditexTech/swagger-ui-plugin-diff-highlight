@@ -227,6 +227,16 @@ const markPropertiesDeleted = (member) => {
   };
 };
 
+// Resolving a `$ref` drops its sibling keywords in Swagger 2.0 and OpenAPI 3.0,
+// so the status of a deleted `$ref` schema is kept on an `allOf` wrapper.
+const wrapDeletedRef = (node) => {
+  if (typeof node.$ref !== "string" || !isDeleted(node)) {
+    return node;
+  }
+  const { $ref, ...rest } = node;
+  return { ...rest, allOf: [{ $ref }] };
+};
+
 /**
  * Swagger UI merges `allOf` members into one schema before it builds an
  * example, so the `x-diff-status` of a deleted member would overwrite the
@@ -246,7 +256,7 @@ export const pushDeletedAllOfMembersDown = (node) => {
     return node;
   }
   return Object.fromEntries(
-    Object.entries(node).map(([key, value]) => [
+    Object.entries(wrapDeletedRef(node)).map(([key, value]) => [
       key,
       key === "allOf" && Array.isArray(value)
         ? value.map((member) =>
