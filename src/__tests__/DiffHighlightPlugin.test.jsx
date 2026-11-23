@@ -21,19 +21,14 @@ describe("wrapComponents.Model", () => {
     );
   });
 
-  it("renders old and new descriptions for updated schemas", () => {
+  it("keeps rendering the original component for updated schemas", () => {
     const schema = fromJS({
       "x-diff-status": "updated",
       "x-diff-original": { type: "string" },
       "x-diff-new": { type: "integer", format: "int64" },
     });
     const { container } = render(<Wrapped schema={schema} />);
-    expect(container.querySelector(".diff-updated-old")).toHaveTextContent(
-      "string"
-    );
-    expect(container.querySelector(".diff-updated-new")).toHaveTextContent(
-      "integer($int64)"
-    );
+    expect(container.textContent).toBe("original");
   });
 
   it("renders the original component untouched when there is no status", () => {

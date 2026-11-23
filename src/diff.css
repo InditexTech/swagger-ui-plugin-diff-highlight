@@ -53,6 +53,16 @@
   color: #6b6b6b;
 }
 
+/* Keyword changes of an updated schema, listed at the end of its accordion. */
+.diff-schema-changes {
+  margin-top: 4px;
+}
+
+.diff-schema-changed {
+  color: #b9770e;
+  font-weight: 600;
+}
+
 /* Mark the schema property NAME cell, not just its value.
  * The value cell (2nd <td>) carries the diff class; :has() lets us reach the
  * sibling name cell (1st <td>) rendered by ObjectModel. The `> td >` scoping

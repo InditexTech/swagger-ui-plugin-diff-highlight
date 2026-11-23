@@ -63,3 +63,68 @@ describe("User API demo fixtures", () => {
     expect(JSON.stringify(report)).not.toContain("EnvironmentEnum");
   });
 });
+
+describe("Bookshop-style schema demo fixtures", () => {
+  it("marks the username maxLength change and keeps Shelf consistent in both modes", () => {
+    const username = diffSpec.components.schemas.User.properties.username;
+    expect(username["x-diff-original"].maxLength).toBe(100);
+    expect(username["x-diff-new"]).toEqual(
+      latestSpec.components.schemas.User.properties.username
+    );
+    const shelf = diffSpec.components.schemas.Shelf;
+    expect(shelf["x-diff-status"]).toBe("updated");
+    expect(shelf["x-diff-new"]).toEqual(latestSpec.components.schemas.Shelf);
+    const entries = (title) =>
+      report.groups.find((group) => group.title === title).entries;
+    expect(entries("User · Properties")).toContainEqual({
+      change: "changed",
+      label: '"username"',
+      detail: "maxLength: 100 → 200",
+    });
+    expect(entries("Shelf · Properties").map((entry) => entry.label)).toEqual([
+      "description",
+      '"label"',
+      '"legacyCode"',
+      '"capacity"',
+    ]);
+  });
+
+  it("keeps the createdAt format-only change consistent across fixtures and report", () => {
+    const createdAt = diffSpec.components.schemas.User.properties.createdAt;
+    expect(createdAt).toMatchObject({
+      type: "string",
+      format: "date-time",
+      "x-diff-status": "updated",
+      "x-diff-original": { type: "string", format: "date" },
+    });
+    expect(createdAt["x-diff-new"]).toEqual(
+      latestSpec.components.schemas.User.properties.createdAt
+    );
+    expect(latestSpec.components.schemas.User.properties.createdAt).toEqual({
+      type: "string",
+      format: "date-time",
+    });
+    const entries = report.groups.find(
+      (group) => group.title === "User · Properties"
+    ).entries;
+    expect(entries).toContainEqual({
+      change: "changed",
+      label: '"createdAt"',
+      detail: "format: date → date-time",
+    });
+  });
+
+  it.each([
+    ["clean", latestSpec],
+    ["diff", diffSpec],
+  ])(
+    "sends a User request body to the token operation in %s mode",
+    (_, spec) => {
+      const schema =
+        spec.paths["/users/{id}/tokens"].post.requestBody.content[
+          "application/json"
+        ].schema;
+      expect(schema).toEqual({ $ref: "#/components/schemas/User" });
+    }
+  );
+});

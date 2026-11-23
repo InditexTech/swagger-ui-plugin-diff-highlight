@@ -89,6 +89,13 @@
             "schema": { "type": "string" }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/User" }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "Token issued.",
@@ -113,8 +120,9 @@
         "type": "object",
         "properties": {
           "role": { "$ref": "#/components/schemas/RoleEnum" },
-          "username": { "type": "string" },
+          "username": { "type": "string", "maxLength": 200 },
           "email": { "type": "string", "format": "email" },
+          "createdAt": { "type": "string", "format": "date-time" },
           "timeout": { "type": "integer" },
           "preferences": {
             "type": "object",
@@ -124,6 +132,20 @@
             }
           }
         }
+      },
+      "Shelf": {
+        "title": "Shelf",
+        "description": "Where books are shelved",
+        "allOf": [
+          { "$ref": "#/components/schemas/User" },
+          {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "capacity": { "type": "integer" }
+            }
+          }
+        ]
       },
       "Token": {
         "type": "object",
