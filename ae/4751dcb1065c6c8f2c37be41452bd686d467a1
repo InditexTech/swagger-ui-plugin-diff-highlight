@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_5425956f0837d4::t_753a8e2db66ea8 23
+src/DiffHighlightPlugin.jsx
+  s_5425956f0837d4::t_2fabdf39f14a24 252-262,309,312-313
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "ae4751dcb1065c6c8f2c37be41452bd686d467a1",
+  "prompts": {},
+  "sessions": {
+    "s_5425956f0837d4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_df3390b16ffe366SvBK8roqiAb",
+        "model": "claude-sonnet-5.5"
+      },
+      "human_author": "Airam Rguez <airamrr@ext.inditex.com>"
+    }
+  }
+}
