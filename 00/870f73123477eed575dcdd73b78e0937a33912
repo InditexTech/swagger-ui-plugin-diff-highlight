@@ -1,0 +1,21 @@
+example/src/specs/diffSpec.json
+  s_5425956f0837d4::t_0e8f5474395818 198-213
+example/src/specs/latestSpec.json
+  s_5425956f0837d4::t_e24ae9e7ca0a28 127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "00870f73123477eed575dcdd73b78e0937a33912",
+  "prompts": {},
+  "sessions": {
+    "s_5425956f0837d4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_df3390b16ffe366SvBK8roqiAb",
+        "model": "claude-sonnet-5.5"
+      },
+      "human_author": "Airam Rguez <airamrr@ext.inditex.com>"
+    }
+  }
+}
