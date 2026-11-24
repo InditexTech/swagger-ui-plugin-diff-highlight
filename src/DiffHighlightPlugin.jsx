@@ -250,6 +250,17 @@ const schemaUpdateDetails = (original, updated, enumHandled) => {
 };
 
 /**
+ * Swagger UI's `ArrayModel` renders every keyword it does not know, `x-`
+ * extensions included, so the annotations must not reach it.
+ */
+const withoutDiffMetadata = (schema) =>
+  schema?.filterNot
+    ? schema.filterNot(
+        (_, key) => typeof key === "string" && key.startsWith("x-diff-")
+      )
+    : schema;
+
+/**
  * Plugin that highlights API changes inline based on `x-diff-*` extensions
  * present in the loaded "diff" OpenAPI document.
  *
@@ -295,15 +306,11 @@ const DiffHighlightPlugin = () => ({
           rawSchema,
           localRefResolver(specJsonOf(system))
         );
-        let schema = rawSchema;
+        let schema = withoutDiffMetadata(rawSchema);
         if (enumChanged) {
           schema = supplemental
-            ? rawSchema
-                .remove("enum")
-                .remove("x-diff-status")
-                .remove("x-diff-original")
-                .remove("x-diff-new")
-            : rawSchema.set("enum", updatedEnum || originalEnum);
+            ? schema.remove("enum")
+            : schema.set("enum", updatedEnum || originalEnum);
         }
 
         const model = (
