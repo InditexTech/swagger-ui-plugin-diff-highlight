@@ -651,6 +651,79 @@ it("summarises a changed array items schema compactly", async () => {
   expect(changes).not.toHaveTextContent("int32");
 });
 
+const expandAll = async (model) => {
+  for (let pass = 0; pass < 5; pass += 1) {
+    const closed = model.querySelectorAll('button[aria-expanded="false"]');
+    if (closed.length === 0) return;
+    closed.forEach((button) => fireEvent.click(button));
+  }
+};
+
+it.each([
+  {
+    kind: "an updated array property",
+    shelves: {
+      type: "array",
+      items: { type: "string" },
+      maxItems: 20,
+      "x-diff-status": "updated",
+      "x-diff-original": {
+        type: "array",
+        items: { type: "string" },
+        maxItems: 100,
+      },
+      "x-diff-new": { type: "array", items: { type: "string" }, maxItems: 20 },
+    },
+    visible: /maxItems: 20/,
+  },
+  {
+    kind: "an added array property",
+    shelves: {
+      type: "array",
+      items: { type: "string" },
+      maxItems: 20,
+      "x-diff-status": "added",
+    },
+    visible: /maxItems: 20/,
+  },
+  {
+    kind: "a deleted array property",
+    shelves: {
+      type: "array",
+      items: { type: "string" },
+      maxItems: 20,
+      "x-diff-status": "deleted",
+    },
+    visible: /maxItems: 20/,
+  },
+])(
+  "does not render the x-diff-* metadata of $kind",
+  async ({ shelves, visible }) => {
+    renderSchemas({
+      Library: {
+        type: "object",
+        properties: { shelves },
+      },
+    });
+    const model = await openModel("Library", ".property-row");
+    await expandAll(model);
+    expect(model).toHaveTextContent(visible);
+    expect(model.textContent).not.toContain("x-diff-");
+  }
+);
+
+it("does not render the x-diff-* metadata of an updated top-level array schema", async () => {
+  renderSchemas({
+    Shelves: changedSchema(
+      { type: "array", items: { type: "string" }, maxItems: 100 },
+      { type: "array", items: { type: "string" }, maxItems: 20 }
+    ),
+  });
+  const model = await openModel("Shelves", ".diff-schema-changes");
+  await expandAll(model);
+  expect(model.textContent).not.toContain("x-diff-");
+});
+
 const renderOperations = (schemas) =>
   render(
     <SwaggerUI

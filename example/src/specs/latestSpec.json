@@ -124,6 +124,7 @@
           "email": { "type": "string", "format": "email" },
           "createdAt": { "type": "string", "format": "date-time" },
           "timeout": { "type": "integer" },
+          "tags": { "type": "array", "items": { "type": "string" }, "maxItems": 10 },
           "preferences": {
             "type": "object",
             "properties": {
