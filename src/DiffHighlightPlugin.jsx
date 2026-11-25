@@ -120,6 +120,183 @@ export const containsChange = (schema, resolveRef = () => undefined) => {
   return readStatus(root) === "updated" || hasChangedDescendant(root);
 };
 
+const isDeleted = (schema) => schema?.["x-diff-status"] === "deleted";
+
+const isSchemaObject = (value) =>
+  value != null && typeof value === "object" && !Array.isArray(value);
+
+const sameMembers = (a, b) =>
+  Object.keys(a).length === Object.keys(b).length &&
+  Object.keys(a).every((key) => a[key] === b[key]);
+
+const pruneList = (members, prune) => {
+  const kept = members.map(prune).filter((member) => member !== undefined);
+  return sameMembers(kept, members) ? members : kept;
+};
+
+const prunePropertyUpdates = (schema, prune) => {
+  if (!isSchemaObject(schema.properties)) {
+    return {};
+  }
+  const kept = {};
+  for (const [name, property] of Object.entries(schema.properties)) {
+    const pruned = prune(property);
+    if (pruned !== undefined) {
+      kept[name] = pruned;
+    }
+  }
+  const updates = {
+    properties: sameMembers(kept, schema.properties) ? schema.properties : kept,
+  };
+  if (Array.isArray(schema.required)) {
+    const required = schema.required.filter(
+      (name) => !(name in schema.properties) || name in kept
+    );
+    updates.required = sameMembers(required, schema.required)
+      ? schema.required
+      : required;
+  }
+  return updates;
+};
+
+const pruneSubschemaUpdates = (schema, prune) => {
+  const updates = {};
+  for (const key of ["items", "additionalProperties"]) {
+    if (isSchemaObject(schema[key])) {
+      updates[key] = prune(schema[key]);
+    } else if (Array.isArray(schema[key])) {
+      updates[key] = pruneList(schema[key], prune);
+    }
+  }
+  for (const key of ["allOf", "anyOf", "oneOf"]) {
+    if (Array.isArray(schema[key])) {
+      updates[key] = pruneList(schema[key], prune);
+    }
+  }
+  return updates;
+};
+
+/**
+ * Removes the schemas marked `x-diff-status: deleted` from a plain JS schema,
+ * at any depth: object properties, array `items`, `additionalProperties` and
+ * `allOf` / `anyOf` / `oneOf` members. A deleted `items` schema leaves an
+ * array with `example: []` unless it has one, since Swagger UI 2.0 and 3.0
+ * omit an array without `items` from the example. Names removed from `properties` are
+ * dropped from `required`. A schema with nothing to remove is returned as is,
+ * and the input is never mutated.
+ *
+ * @param {object} schema - The schema as a plain JS object.
+ * @param {Set<object>} [seen] - The schemas being visited, to stop on cycles.
+ * @returns {object} The pruned schema.
+ */
+export const pruneDeleted = (schema, seen = new Set()) => {
+  if (!isSchemaObject(schema) || seen.has(schema)) {
+    return schema;
+  }
+  seen.add(schema);
+  const prune = (member) =>
+    isDeleted(member) ? undefined : pruneDeleted(member, seen);
+  const updates = {
+    ...prunePropertyUpdates(schema, prune),
+    ...(isDeleted(schema.items) && schema.example === undefined
+      ? { example: [] }
+      : {}),
+    ...pruneSubschemaUpdates(schema, prune),
+  };
+  seen.delete(schema);
+
+  const changedKeys = Object.keys(updates).filter(
+    (key) => updates[key] !== schema[key]
+  );
+  if (changedKeys.length === 0) {
+    return schema;
+  }
+  const result = { ...schema };
+  for (const key of changedKeys) {
+    if (updates[key] === undefined) {
+      delete result[key];
+    } else {
+      result[key] = updates[key];
+    }
+  }
+  return result;
+};
+
+const DELETED = "deleted";
+
+const markPropertiesDeleted = (member) => {
+  if (!isDeleted(member) || !isSchemaObject(member.properties)) {
+    return member;
+  }
+  const rest = { ...member };
+  delete rest["x-diff-status"];
+  return {
+    ...rest,
+    properties: Object.fromEntries(
+      Object.entries(member.properties).map(([name, property]) => [
+        name,
+        isSchemaObject(property)
+          ? { ...property, "x-diff-status": DELETED }
+          : property,
+      ])
+    ),
+  };
+};
+
+// Resolving a `$ref` drops its sibling keywords in Swagger 2.0 and OpenAPI 3.0,
+// so the status of a deleted `$ref` schema is kept on an `allOf` wrapper.
+const wrapDeletedRef = (node) => {
+  if (typeof node.$ref !== "string" || !isDeleted(node)) {
+    return node;
+  }
+  const { $ref, ...rest } = node;
+  return { ...rest, allOf: [{ $ref }] };
+};
+
+/**
+ * Swagger UI merges `allOf` members into one schema before it builds an
+ * example, so the `x-diff-status` of a deleted member would overwrite the
+ * status of the whole merged schema and leave the member's properties
+ * unmarked. This moves the status of each deleted inline member onto its
+ * properties, which survive the merge, in a spec as loaded and before it is
+ * resolved. The input is never mutated.
+ *
+ * @param {unknown} node - The spec as plain JSON.
+ * @returns {unknown} The spec with deleted `allOf` members pushed down.
+ */
+export const pushDeletedAllOfMembersDown = (node) => {
+  if (Array.isArray(node)) {
+    return node.map(pushDeletedAllOfMembersDown);
+  }
+  if (!isSchemaObject(node)) {
+    return node;
+  }
+  return Object.fromEntries(
+    Object.entries(wrapDeletedRef(node)).map(([key, value]) => [
+      key,
+      key === "allOf" && Array.isArray(value)
+        ? value.map((member) =>
+            pushDeletedAllOfMembersDown(markPropertiesDeleted(member))
+          )
+        : pushDeletedAllOfMembersDown(value),
+    ])
+  );
+};
+
+const prunedSchemas = new WeakMap();
+
+const withoutDeleted = (schema) => {
+  if (schema == null || typeof schema !== "object") {
+    return schema;
+  }
+  if (!prunedSchemas.has(schema)) {
+    const js = typeof schema.toJS === "function" ? schema.toJS() : schema;
+    const pruned = pruneDeleted(js);
+    prunedSchemas.set(schema, pruned === js ? schema : pruned);
+  }
+  return prunedSchemas.get(schema);
+};
+
 /**
  * Builds a resolver for local `$ref`s ("#/components/schemas/User") against
  * the loaded spec.
@@ -271,6 +448,27 @@ const withoutDiffMetadata = (schema) =>
  * @returns {object} A swagger-ui plugin object exposing `wrapComponents`.
  */
 const DiffHighlightPlugin = () => ({
+  /**
+   * Every Example tab builds its body through `fn.getSampleSchema`, which
+   * reads `properties` and ignores `x-diff-status`. Pruning the deleted
+   * schemas first makes the example show the consolidated contract. Wrapping
+   * in `afterLoad` keeps Swagger UI's own OpenAPI 3.0 / 3.1 dispatch intact.
+   */
+  afterLoad(system) {
+    const original = system.fn?.getSampleSchema;
+    if (typeof original === "function") {
+      this.fn.getSampleSchema = (schema, ...rest) =>
+        original(withoutDeleted(schema), ...rest);
+    }
+  },
+  statePlugins: {
+    spec: {
+      wrapActions: {
+        updateJsonSpec: (updateJsonSpec) => (json) =>
+          updateJsonSpec(pushDeletedAllOfMembersDown(json)),
+      },
+    },
+  },
   wrapComponents: {
     /**
      * Schema properties: each property value is rendered as a nested `<Model>`.

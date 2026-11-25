@@ -4,9 +4,11 @@ import type { ComponentType } from "react";
 
 /**
  * The partial Swagger UI "system" returned by the plugin: a map of component
- * names to wrappers applied through Swagger UI's `wrapComponents` API.
+ * names to wrappers applied through Swagger UI's `wrapComponents` API, and an
+ * `afterLoad` hook that keeps deleted schemas out of generated examples.
  */
 export interface DiffHighlightSystem {
+  afterLoad: (system: { fn?: Record<string, unknown> }) => void;
   wrapComponents: Record<
     string,
     (Original: ComponentType<any>, system: unknown) => ComponentType<any>
