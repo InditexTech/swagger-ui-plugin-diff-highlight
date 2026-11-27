@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-27
+
 ### Added
 
 - Updated schemas list their changed keywords (`maxLength: 100 → 200`, added or removed values, `changed` for nested structures) inside the native accordion
@@ -66,7 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial OSS repository shell.
 - Original code, including the diff highlighting plugin, and the example React application.
 
-[Unreleased]: https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/compare/0.3.0...HEAD
+[Unreleased]: https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/compare/0.4.0...HEAD
+
+[0.4.0]: https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/compare/0.3.0...0.4.0
 
 [0.3.0]: https://github.com/InditexTech/swagger-ui-plugin-diff-highlight/compare/0.2.0...0.3.0
 
