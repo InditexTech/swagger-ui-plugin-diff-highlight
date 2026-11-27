@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-21
+
 ### Added
 
 - Updated schemas list their changed keywords (`maxLength: 100 → 200`, added or removed values, `changed` for nested structures) inside the native accordion
