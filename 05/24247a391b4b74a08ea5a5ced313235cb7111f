@@ -1,0 +1,16 @@
+CHANGELOG.md
+  h_e2c7967ec6cbec 16-17
+package-lock.json
+  h_e2c7967ec6cbec 8192-8198,8805-8818
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0524247a391b4b74a08ea5a5ced313235cb7111f",
+  "prompts": {},
+  "humans": {
+    "h_e2c7967ec6cbec": {
+      "author": "Bruno Luis Goncalves Pedro <brunolgp@inditex.com>"
+    }
+  }
+}
