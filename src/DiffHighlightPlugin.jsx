@@ -4,6 +4,12 @@ import React, { createContext, useContext, useMemo } from "react";
 
 const EnumDiffContext = createContext(null);
 
+/**
+ * The keyword changes of the nearest enclosing updated `Model`, for its first
+ * `ModelCollapse` to show. `null` when there is nothing to show.
+ */
+const UpdateDetailsContext = createContext(null);
+
 const enumValueKey = (value) =>
   JSON.stringify(value, (_, item) =>
     item && typeof item === "object" && !Array.isArray(item)
@@ -114,6 +120,183 @@ export const containsChange = (schema, resolveRef = () => undefined) => {
   return readStatus(root) === "updated" || hasChangedDescendant(root);
 };
 
+const isDeleted = (schema) => schema?.["x-diff-status"] === "deleted";
+
+const isSchemaObject = (value) =>
+  value != null && typeof value === "object" && !Array.isArray(value);
+
+const sameMembers = (a, b) =>
+  Object.keys(a).length === Object.keys(b).length &&
+  Object.keys(a).every((key) => a[key] === b[key]);
+
+const pruneList = (members, prune) => {
+  const kept = members.map(prune).filter((member) => member !== undefined);
+  return sameMembers(kept, members) ? members : kept;
+};
+
+const prunePropertyUpdates = (schema, prune) => {
+  if (!isSchemaObject(schema.properties)) {
+    return {};
+  }
+  const kept = {};
+  for (const [name, property] of Object.entries(schema.properties)) {
+    const pruned = prune(property);
+    if (pruned !== undefined) {
+      kept[name] = pruned;
+    }
+  }
+  const updates = {
+    properties: sameMembers(kept, schema.properties) ? schema.properties : kept,
+  };
+  if (Array.isArray(schema.required)) {
+    const required = schema.required.filter(
+      (name) => !(name in schema.properties) || name in kept
+    );
+    updates.required = sameMembers(required, schema.required)
+      ? schema.required
+      : required;
+  }
+  return updates;
+};
+
+const pruneSubschemaUpdates = (schema, prune) => {
+  const updates = {};
+  for (const key of ["items", "additionalProperties"]) {
+    if (isSchemaObject(schema[key])) {
+      updates[key] = prune(schema[key]);
+    } else if (Array.isArray(schema[key])) {
+      updates[key] = pruneList(schema[key], prune);
+    }
+  }
+  for (const key of ["allOf", "anyOf", "oneOf"]) {
+    if (Array.isArray(schema[key])) {
+      updates[key] = pruneList(schema[key], prune);
+    }
+  }
+  return updates;
+};
+
+/**
+ * Removes the schemas marked `x-diff-status: deleted` from a plain JS schema,
+ * at any depth: object properties, array `items`, `additionalProperties` and
+ * `allOf` / `anyOf` / `oneOf` members. A deleted `items` schema leaves an
+ * array with `example: []` unless it has one, since Swagger UI 2.0 and 3.0
+ * omit an array without `items` from the example. Names removed from `properties` are
+ * dropped from `required`. A schema with nothing to remove is returned as is,
+ * and the input is never mutated.
+ *
+ * @param {object} schema - The schema as a plain JS object.
+ * @param {Set<object>} [seen] - The schemas being visited, to stop on cycles.
+ * @returns {object} The pruned schema.
+ */
+export const pruneDeleted = (schema, seen = new Set()) => {
+  if (!isSchemaObject(schema) || seen.has(schema)) {
+    return schema;
+  }
+  seen.add(schema);
+  const prune = (member) =>
+    isDeleted(member) ? undefined : pruneDeleted(member, seen);
+  const updates = {
+    ...prunePropertyUpdates(schema, prune),
+    ...(isDeleted(schema.items) && schema.example === undefined
+      ? { example: [] }
+      : {}),
+    ...pruneSubschemaUpdates(schema, prune),
+  };
+  seen.delete(schema);
+
+  const changedKeys = Object.keys(updates).filter(
+    (key) => updates[key] !== schema[key]
+  );
+  if (changedKeys.length === 0) {
+    return schema;
+  }
+  const result = { ...schema };
+  for (const key of changedKeys) {
+    if (updates[key] === undefined) {
+      delete result[key];
+    } else {
+      result[key] = updates[key];
+    }
+  }
+  return result;
+};
+
+const DELETED = "deleted";
+
+const markPropertiesDeleted = (member) => {
+  if (!isDeleted(member) || !isSchemaObject(member.properties)) {
+    return member;
+  }
+  const rest = { ...member };
+  delete rest["x-diff-status"];
+  return {
+    ...rest,
+    properties: Object.fromEntries(
+      Object.entries(member.properties).map(([name, property]) => [
+        name,
+        isSchemaObject(property)
+          ? { ...property, "x-diff-status": DELETED }
+          : property,
+      ])
+    ),
+  };
+};
+
+// Resolving a `$ref` drops its sibling keywords in Swagger 2.0 and OpenAPI 3.0,
+// so the status of a deleted `$ref` schema is kept on an `allOf` wrapper.
+const wrapDeletedRef = (node) => {
+  if (typeof node.$ref !== "string" || !isDeleted(node)) {
+    return node;
+  }
+  const { $ref, ...rest } = node;
+  return { ...rest, allOf: [{ $ref }] };
+};
+
+/**
+ * Swagger UI merges `allOf` members into one schema before it builds an
+ * example, so the `x-diff-status` of a deleted member would overwrite the
+ * status of the whole merged schema and leave the member's properties
+ * unmarked. This moves the status of each deleted inline member onto its
+ * properties, which survive the merge, in a spec as loaded and before it is
+ * resolved. The input is never mutated.
+ *
+ * @param {unknown} node - The spec as plain JSON.
+ * @returns {unknown} The spec with deleted `allOf` members pushed down.
+ */
+export const pushDeletedAllOfMembersDown = (node) => {
+  if (Array.isArray(node)) {
+    return node.map(pushDeletedAllOfMembersDown);
+  }
+  if (!isSchemaObject(node)) {
+    return node;
+  }
+  return Object.fromEntries(
+    Object.entries(wrapDeletedRef(node)).map(([key, value]) => [
+      key,
+      key === "allOf" && Array.isArray(value)
+        ? value.map((member) =>
+            pushDeletedAllOfMembersDown(markPropertiesDeleted(member))
+          )
+        : pushDeletedAllOfMembersDown(value),
+    ])
+  );
+};
+
+const prunedSchemas = new WeakMap();
+
+const withoutDeleted = (schema) => {
+  if (schema == null || typeof schema !== "object") {
+    return schema;
+  }
+  if (!prunedSchemas.has(schema)) {
+    const js = typeof schema.toJS === "function" ? schema.toJS() : schema;
+    const pruned = pruneDeleted(js);
+    prunedSchemas.set(schema, pruned === js ? schema : pruned);
+  }
+  return prunedSchemas.get(schema);
+};
+
 /**
  * Builds a resolver for local `$ref`s ("#/components/schemas/User") against
  * the loaded spec.
@@ -160,6 +343,100 @@ export const describeSchema = (schema) => {
   return format ? `${type}($${format})` : type;
 };
 
+const UpdatedValue = ({ before, after }) => (
+  <span className="diff-updated-inline">
+    <span className="diff-updated-old">{before}</span>
+    <span className="diff-updated-arrow"> → </span>
+    <span className="diff-updated-new">{after}</span>
+  </span>
+);
+
+const plain = (value) =>
+  value != null && typeof value.toJS === "function" ? value.toJS() : value;
+
+const isStructured = (value) => value != null && typeof value === "object";
+
+const scalarText = (value) =>
+  typeof value === "string" ? value : JSON.stringify(value);
+
+const typeLabel = (schema) =>
+  schema.get("type") ? describeSchema(schema) : undefined;
+
+const changeValue = (before, after) => {
+  if (isStructured(before) || isStructured(after)) {
+    return <span className="diff-schema-changed">changed</span>;
+  }
+  if (before === undefined) {
+    return <span className="diff-added">{scalarText(after)}</span>;
+  }
+  if (after === undefined) {
+    return <span className="diff-deleted">{scalarText(before)}</span>;
+  }
+  return <UpdatedValue before={scalarText(before)} after={scalarText(after)} />;
+};
+
+/**
+ * Lists the keywords that differ between the `x-diff-original` and
+ * `x-diff-new` snapshots of an updated schema. Extensions and `enum` are
+ * skipped. When `enumHandled`, the enum view already shows type and format,
+ * so those are skipped too. Object and array values are summarised as
+ * "changed". Returns `null` when either snapshot is missing or nothing differs.
+ *
+ * @param {object} original - The `x-diff-original` snapshot (Immutable Map).
+ * @param {object} updated - The `x-diff-new` snapshot (Immutable Map).
+ * @param {boolean} enumHandled - Whether the enum view shows type changes.
+ * @returns {React.ReactElement|null} The rows, or `null`.
+ */
+const schemaUpdateDetails = (original, updated, enumHandled) => {
+  if (!isMapLike(original) || !isMapLike(updated)) {
+    return null;
+  }
+  const typed =
+    !enumHandled && Boolean(typeLabel(original) || typeLabel(updated));
+  const skipped = (key) =>
+    key === "type" ||
+    key === "enum" ||
+    key === "$$ref" ||
+    key.startsWith("x-") ||
+    (key === "format" && (typed || enumHandled));
+  const keys = new Set([...original.keySeq(), ...updated.keySeq()]);
+  const entries = typed
+    ? [["type", typeLabel(original), typeLabel(updated)]]
+    : [];
+  for (const key of keys) {
+    if (!skipped(key)) {
+      entries.push([key, plain(original.get(key)), plain(updated.get(key))]);
+    }
+  }
+  const rows = entries.filter(
+    ([, before, after]) => enumValueKey(before) !== enumValueKey(after)
+  );
+  if (rows.length === 0) {
+    return null;
+  }
+  return (
+    <div className="diff-schema-changes">
+      {rows.map(([key, before, after]) => (
+        <div className="diff-schema-change" key={key}>
+          <span className="diff-schema-keyword">{key}</span>:{" "}
+          {changeValue(before, after)}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/**
+ * Swagger UI's `ArrayModel` renders every keyword it does not know, `x-`
+ * extensions included, so the annotations must not reach it.
+ */
+const withoutDiffMetadata = (schema) =>
+  schema?.filterNot
+    ? schema.filterNot(
+        (_, key) => typeof key === "string" && key.startsWith("x-diff-")
+      )
+    : schema;
+
 /**
  * Plugin that highlights API changes inline based on `x-diff-*` extensions
  * present in the loaded "diff" OpenAPI document.
@@ -171,6 +448,27 @@ export const describeSchema = (schema) => {
  * @returns {object} A swagger-ui plugin object exposing `wrapComponents`.
  */
 const DiffHighlightPlugin = () => ({
+  /**
+   * Every Example tab builds its body through `fn.getSampleSchema`, which
+   * reads `properties` and ignores `x-diff-status`. Pruning the deleted
+   * schemas first makes the example show the consolidated contract. Wrapping
+   * in `afterLoad` keeps Swagger UI's own OpenAPI 3.0 / 3.1 dispatch intact.
+   */
+  afterLoad(system) {
+    const original = system.fn?.getSampleSchema;
+    if (typeof original === "function") {
+      this.fn.getSampleSchema = (schema, ...rest) =>
+        original(withoutDeleted(schema), ...rest);
+    }
+  },
+  statePlugins: {
+    spec: {
+      wrapActions: {
+        updateJsonSpec: (updateJsonSpec) => (json) =>
+          updateJsonSpec(pushDeletedAllOfMembersDown(json)),
+      },
+    },
+  },
   wrapComponents: {
     /**
      * Schema properties: each property value is rendered as a nested `<Model>`.
@@ -194,54 +492,32 @@ const DiffHighlightPlugin = () => ({
               : null,
           [enumChanged, original, updated, supplemental, getComponent]
         );
-
-        if (status === "updated" && !enumChanged) {
-          const originalType = describeSchema(original);
-          const updatedType = describeSchema(updated);
-          return (
-            <EnumDiffContext.Provider value={null}>
-              <span className="diff-updated-inline">
-                {originalType === updatedType ? (
-                  updatedType
-                ) : (
-                  <>
-                    <span className="diff-updated-old">{originalType}</span>
-                    <span className="diff-updated-arrow"> → </span>
-                    <span className="diff-updated-new">{updatedType}</span>
-                  </>
-                )}
-              </span>
-            </EnumDiffContext.Provider>
-          );
-        }
+        const updateDetails = useMemo(
+          () =>
+            status === "updated"
+              ? schemaUpdateDetails(original, updated, enumChanged)
+              : null,
+          [status, original, updated, enumChanged]
+        );
 
         const marked = containsChange(
           rawSchema,
           localRefResolver(specJsonOf(system))
         );
-
+        let schema = withoutDiffMetadata(rawSchema);
         if (enumChanged) {
-          const schema = supplemental
-            ? rawSchema
-                .remove("enum")
-                .remove("x-diff-status")
-                .remove("x-diff-original")
-                .remove("x-diff-new")
-            : rawSchema.set("enum", updatedEnum || originalEnum);
-          return (
-            <ContainsChangeContext.Provider value={marked}>
-              <EnumDiffContext.Provider value={enumDiff}>
-                <Original {...props} schema={schema} />
-              </EnumDiffContext.Provider>
-            </ContainsChangeContext.Provider>
-          );
+          schema = supplemental
+            ? schema.remove("enum")
+            : schema.set("enum", updatedEnum || originalEnum);
         }
 
         const model = (
           <ContainsChangeContext.Provider value={marked}>
-            <EnumDiffContext.Provider value={null}>
-              <Original {...props} />
-            </EnumDiffContext.Provider>
+            <UpdateDetailsContext.Provider value={updateDetails}>
+              <EnumDiffContext.Provider value={enumDiff}>
+                <Original {...props} schema={schema} />
+              </EnumDiffContext.Provider>
+            </UpdateDetailsContext.Provider>
           </ContainsChangeContext.Provider>
         );
 
@@ -265,6 +541,7 @@ const DiffHighlightPlugin = () => ({
       function DiffModelCollapse(props) {
         const fromModel = useContext(ContainsChangeContext);
         const diff = useContext(EnumDiffContext);
+        const details = useContext(UpdateDetailsContext);
         const nestedDiff = useMemo(
           () => diff && { ...diff, supplemental: false },
           [diff]
@@ -282,19 +559,24 @@ const DiffHighlightPlugin = () => ({
           ? [props.classes, "diff-ancestor"].filter(Boolean).join(" ")
           : props.classes;
 
-        if (!diff?.supplemental) {
+        if (!details && !diff?.supplemental) {
           return <Original {...props} classes={classes} />;
         }
-        const EnumModel = diff.getComponent("EnumModel");
+        const EnumModel = diff?.supplemental && diff.getComponent("EnumModel");
         return (
-          <EnumDiffContext.Provider value={null}>
-            <Original {...props} classes={classes}>
-              {props.children}
-              <EnumDiffContext.Provider value={nestedDiff}>
-                <EnumModel getComponent={diff.getComponent} />
-              </EnumDiffContext.Provider>
-            </Original>
-          </EnumDiffContext.Provider>
+          <UpdateDetailsContext.Provider value={null}>
+            <EnumDiffContext.Provider value={diff?.supplemental ? null : diff}>
+              <Original {...props} classes={classes}>
+                {props.children}
+                {details}
+                {EnumModel && (
+                  <EnumDiffContext.Provider value={nestedDiff}>
+                    <EnumModel getComponent={diff.getComponent} />
+                  </EnumDiffContext.Provider>
+                )}
+              </Original>
+            </EnumDiffContext.Provider>
+          </UpdateDetailsContext.Provider>
         );
       },
 
@@ -325,12 +607,7 @@ const DiffHighlightPlugin = () => ({
             <br />
             {originalType !== updatedType && (
               <div className="diff-type-change">
-                Type:{" "}
-                <span className="diff-updated-inline">
-                  <span className="diff-updated-old">{originalType}</span>
-                  <span className="diff-updated-arrow"> → </span>
-                  <span className="diff-updated-new">{updatedType}</span>
-                </span>
+                Type: <UpdatedValue before={originalType} after={updatedType} />
               </div>
             )}
             Enum:

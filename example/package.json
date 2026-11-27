@@ -12,10 +12,12 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.0.7"
+    "vite": "^6.4.4"
   },
   "overrides": {
-    "js-yaml": "^4.3.2"
+    "follow-redirects": "^1.16.2",
+    "js-yaml": "^4.3.2",
+    "source-map-js": "^1.2.2"
   },
   "scripts": {
     "start": "vite",

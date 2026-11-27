@@ -8,3 +8,5 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # 0 disables version-update PRs; security-update PRs are unaffected.
+    open-pull-requests-limit: 0

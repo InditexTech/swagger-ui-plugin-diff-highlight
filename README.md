@@ -24,6 +24,12 @@ When an API evolves from one version to the next, it is hard to see _what actual
 | `deleted` | red + strikethrough                                         |
 | `updated` | inline `old → new` (old in red strikethrough, new in green) |
 
+An updated schema keeps Swagger UI's native model, including its name, body, toggle and nested marks. The changed keywords are listed at the end of its accordion body.
+
+### Generated examples
+
+The request and response **Example** tabs show the consolidated (new) contract. Swagger UI builds those bodies from schema `properties` and ignores `x-diff-status`, so the plugin prunes every schema marked `deleted` before the example is generated: object properties, array `items`, `additionalProperties` and `allOf` / `anyOf` / `oneOf` members, at any depth. An array whose `items` schema is deleted shows as `[]`. Names it removes are also dropped from `required`. `added`, `updated` and unchanged schemas stay. The **Model** tab still lists deleted properties with their red mark. An `example` or `examples` you write yourself is used as authored and is not pruned. Specs without `x-diff-status` produce the same examples as before.
+
 ## Getting Started
 
 ### Installation
@@ -62,7 +68,7 @@ Then feed it an annotated spec. Anything without an annotation renders normally.
 
 #### Annotating your OpenAPI document
 
-Annotate any operation, parameter, response, or schema property with `x-diff-status`:
+Annotate any operation, parameter, response, or schema with `x-diff-status`:
 
 ```jsonc
 // An added parameter
@@ -89,7 +95,7 @@ Annotate any operation, parameter, response, or schema property with `x-diff-sta
 }
 ```
 
-For an **updated** schema property, also provide the before/after sub-schemas so the plugin can render `old → new`:
+For an **updated** schema, also provide the before/after sub-schemas so the plugin can render `old → new`. Any schema works, including composed ones (`allOf`, `anyOf`, `oneOf`) and root schemas under `components/schemas`:
 
 ```jsonc
 "timeout": {
@@ -104,13 +110,25 @@ Valid `x-diff-status` values: `added`, `deleted`, `updated`, `unchanged` (or sim
 
 ##### Where each key goes
 
-| Extension         | Where it lives                                                               | Notes                                            |
-| ----------------- | ---------------------------------------------------------------------------- | ------------------------------------------------ |
-| `x-diff-status`   | On an operation, a parameter object, a response object, or a schema property | Required on every element you want to mark       |
-| `x-diff-original` | On a schema property only                                                    | Only with `"updated"`; the **before** sub-schema |
-| `x-diff-new`      | On a schema property only                                                    | Only with `"updated"`; the **after** sub-schema  |
+| Extension         | Where it lives                                                      | Notes                                            |
+| ----------------- | ------------------------------------------------------------------- | ------------------------------------------------ |
+| `x-diff-status`   | On an operation, a parameter object, a response object, or a schema | Required on every element you want to mark       |
+| `x-diff-original` | On a schema, including a root or composed schema                    | Only with `"updated"`; the **before** sub-schema |
+| `x-diff-new`      | On a schema, including a root or composed schema                    | Only with `"updated"`; the **after** sub-schema  |
 
-All three keys are **sibling properties** of the element they annotate. `x-diff-original` / `x-diff-new` are only read for `"updated"` schema properties — for added/deleted elements, `x-diff-status` alone is enough.
+All three keys are **sibling properties** of the element they annotate. `x-diff-original` / `x-diff-new` are only read for `"updated"` schemas. For added/deleted elements, `x-diff-status` alone is enough.
+
+##### How an updated schema renders
+
+The plugin compares the two snapshots keyword by keyword and lists each difference after the native body:
+
+- A scalar keyword that changed shows `old → new`, for example `maxLength: 100 → 200`.
+- A scalar keyword that appeared or disappeared shows its value in green or red. Values such as `0`, `false` and `null` count as values.
+- `type` and `format` show as one row, for example `type: string → integer($int64)`.
+- Object and array keywords (`properties`, `items`, `allOf`, `required` and so on) show a compact `changed` marker instead of a dump. Their added, deleted and updated children keep their own marks in the native body.
+- Enum changes keep their dedicated view, and keyword changes are listed next to it.
+
+The rows live inside the schema's accordion, so they appear only while it is open. Keyword summaries require both snapshots. Non-enum updates without them keep their native content and status mark without a comparison. Extensions (`x-*`) are ignored. Enum comparisons retain their existing renderer. Include an explicit `type` in both enum snapshots so their type and format labels are meaningful.
 
 #### Generating the annotations automatically
 
@@ -118,11 +136,11 @@ You don't have to annotate by hand. Compute the diff between your **old** and **
 
 Whatever tool you use, the change types map onto `x-diff-status` the same way:
 
-| Diff-tool change type       | `x-diff-status` | Extra keys                                          |
-| --------------------------- | --------------- | --------------------------------------------------- |
-| added / new                 | `added`         | –                                                   |
-| removed / deleted / missing | `deleted`       | –                                                   |
-| changed / modified          | `updated`       | `x-diff-original`, `x-diff-new` (schema properties) |
+| Diff-tool change type       | `x-diff-status` | Extra keys                                |
+| --------------------------- | --------------- | ----------------------------------------- |
+| added / new                 | `added`         | –                                         |
+| removed / deleted / missing | `deleted`       | –                                         |
+| changed / modified          | `updated`       | `x-diff-original`, `x-diff-new` (schemas) |
 
 The three examples below convert real output from popular tools into the same annotated spec.
 
@@ -215,7 +233,7 @@ Modified: GET /users/{id}
     [Breaking] Body attribute modified: timeout
 ```
 
-A modified attribute type maps to an `updated` schema property. Supply the old and new types as sub-schemas:
+A modified attribute type maps to an `updated` schema. Supply the old and new types as sub-schemas:
 
 ```jsonc
 "timeout": {
@@ -237,7 +255,7 @@ The plugin uses Swagger UI's [`wrapComponents`](https://swagger-ui.github.io/swa
 | `operation`     | An endpoint / opblock                                       | The **unresolved** spec via `specSelectors`/`specPath`                  |
 | `parameterRow`  | A request parameter row                                     | `props.param` / `props.rawParam`                                        |
 | `response`      | A response row                                              | `props.response`                                                        |
-| `Model`         | A schema property                                           | `props.schema`                                                          |
+| `Model`         | A schema                                                    | `props.schema`                                                          |
 | `ModelCollapse` | A schema accordion that contains a change (`diff-ancestor`) | The enclosing `Model`'s schema, or the unresolved spec for root schemas |
 
 Three implementation details worth knowing:
